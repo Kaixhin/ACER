@@ -1,4 +1,5 @@
 import argparse
+import os
 import gym
 import torch
 from torch import multiprocessing as mp
@@ -16,10 +17,11 @@ parser.add_argument('--seed', type=int, default=123, help='Random seed')
 parser.add_argument('--env', type=str, default='CartPole-v1', metavar='ENV', help='OpenAI Gym environment')
 parser.add_argument('--num-processes', type=int, default=6, metavar='N', help='Number of training async agents (does not include single validation agent)')
 parser.add_argument('--T-max', type=int, default=1e6, metavar='STEPS', help='Number of training steps')
-parser.add_argument('--t-max', type=int, default=100, metavar='STEPS', help='Max number of forward steps for A3C before update')
-parser.add_argument('--test-interval', type=int, default=10000, metavar='STEPS', help='Number of training steps between evaluations (roughly)')
+parser.add_argument('--t-max', type=int, default=200, metavar='STEPS', help='Max number of forward steps for A3C before update')
+parser.add_argument('--test-interval', type=int, default=50000, metavar='STEPS', help='Number of training steps between evaluations (roughly)')
 parser.add_argument('--max-episode-length', type=int, default=500, metavar='LENGTH', help='Maximum episode length')
 parser.add_argument('--hidden-size', type=int, default=32, metavar='SIZE', help='Hidden size of LSTM cell')
+parser.add_argument('--model', type=str, metavar='PARAMS', help='Pretrained model (state dict)')
 parser.add_argument('--discount', type=float, default=0.99, metavar='γ', help='Discount factor')
 parser.add_argument('--gae-discount', type=float, default=1, metavar='λ', help='GAE discount factor')
 parser.add_argument('--reward-clip', action='store_true', help='Clip rewards to [-1, 1]')
@@ -43,6 +45,9 @@ if __name__ == '__main__':
   env = gym.make(args.env)
   shared_model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   shared_model.share_memory()
+  if args.model and os.path.exists(args.model):
+    # Load pretrained weights
+    shared_model.load_state_dict(torch.load(args.model))
   # Create optimiser for shared network parameters with shared statistics
   optimiser = SharedRMSprop(shared_model.parameters(), lr=args.lr, alpha=args.rmsprop_decay)
   optimiser.share_memory()

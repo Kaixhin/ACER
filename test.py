@@ -69,6 +69,7 @@ def test(rank, args, T, shared_model):
             t_start,
             reward_sum,
             episode_length))
+          torch.save(model.state_dict(), 'model.pth')  # Save model params
           can_test = False  # Finish testing
           break
     else:
