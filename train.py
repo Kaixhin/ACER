@@ -14,6 +14,13 @@ def _transfer_grads_to_shared_model(model, shared_model):
     shared_param._grad = param.grad
 
 
+# Linearly decays learning rate
+def _decay_learning_rate(optimiser, steps):
+  eps = 1e-32
+  for param_group in optimiser.param_groups:
+    param_group['lr'] = max(param_group['lr'] - param_group['lr'] / steps, eps)
+
+
 def train(rank, args, T, shared_model, optimiser):
   torch.manual_seed(args.seed + rank)
 
@@ -116,5 +123,8 @@ def train(rank, args, T, shared_model, optimiser):
     # Transfer gradients to shared model and update
     _transfer_grads_to_shared_model(model, shared_model)
     optimiser.step()
+    if not args.no_lr_decay:
+      # Decay learning rate
+      _decay_learning_rate(optimiser, args.T_max)
 
   env.close()

@@ -1,8 +1,8 @@
-malmo-challenge
-===============
+async-rl
+========
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-Team Pig Catcher's entry for the Malmo Collaborative AI Challenge. The base agent is the asynchronous advantage actor-critic (A3C) [[1]](#references) with generalised advantage estimation (GAE) [[2]](#references). The agent also receives the previous action, reward and a step counter [[3]](#references).
+Asynchronous advantage actor-critic (A3C) [[1]](#references) with generalised advantage estimation (GAE) [[2]](#references). The agent also receives the previous action, reward and a step counter [[3]](#references).
 
 Run with `OMP_NUM_THREADS=1 python main.py`. The environment flag prevents multiple OpenMP threads being run in each process.
 
