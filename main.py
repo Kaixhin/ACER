@@ -39,6 +39,9 @@ parser.add_argument('--render', action='store_true', help='Render evaluation age
 if __name__ == '__main__':
   # Setup
   args = parser.parse_args()
+  print(' ' * 26 + 'Options')
+  for k, v in vars(args).items():
+    print(' ' * 26 + k + ': ' + str(v))
   torch.manual_seed(args.seed)
   T = Counter()  # Global shared counter
 
@@ -46,7 +49,7 @@ if __name__ == '__main__':
   env = gym.make(args.env)
   shared_model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   shared_model.share_memory()
-  if args.model and os.path.exists(args.model):
+  if args.model and os.path.isfile(args.model):
     # Load pretrained weights
     shared_model.load_state_dict(torch.load(args.model))
   # Create optimiser for shared network parameters with shared statistics

@@ -12,6 +12,7 @@ Requirements
 - [Python 3](https://www.python.org/)
 - [PyTorch](http://pytorch.org/)
 - [OpenAI Gym](https://gym.openai.com/)
+- [Plotly](https://plot.ly/python/)
 
 Acknowledgements
 ----------------

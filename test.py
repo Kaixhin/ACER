@@ -5,7 +5,7 @@ import torch
 from torch.autograd import Variable
 
 from model import ActorCritic
-from utils import action_to_one_hot, extend_input, observation_to_tensor
+from utils import action_to_one_hot, extend_input, observation_to_tensor, plot_line
 
 
 def test(rank, args, T, shared_model):
@@ -19,7 +19,8 @@ def test(rank, args, T, shared_model):
 
   can_test = True  # Test flag
   t_start = 1  # Test step counter to check against global counter
-  l = str(len(str(args.T_max)))
+  rewards, steps = [], []  # Rewards and steps for plotting
+  l = str(len(str(args.T_max)))  # Max num. of digits for logging steps
   done = True  # Start new episode
 
   while T.value() <= args.T_max:
@@ -69,6 +70,9 @@ def test(rank, args, T, shared_model):
             t_start,
             reward_sum,
             episode_length))
+          rewards.append(reward_sum)
+          steps.append(t_start)
+          plot_line(steps, rewards)  # Plot rewards
           torch.save(model.state_dict(), 'model.pth')  # Save model params
           can_test = False  # Finish testing
           if args.evaluate:

@@ -1,3 +1,5 @@
+import plotly
+from plotly.graph_objs import Scatter
 import torch
 from torch import multiprocessing as mp
 from torch.autograd import Variable
@@ -35,3 +37,12 @@ def extend_input(observation, action, reward, timestep, volatile=False):
   reward = torch.Tensor([reward]).unsqueeze(0)
   timestep = torch.Tensor([timestep]).unsqueeze(0)
   return Variable(torch.cat((observation, action, reward, timestep), 1), volatile=volatile)
+
+
+def plot_line(xs, ys):
+  plotly.offline.plot({
+    'data': [Scatter(x=xs, y=ys)],
+    'layout': dict(title='Rewards',
+                   xaxis={'title': 'Total Reward'},
+                   yaxis={'title': 'Step'})
+  }, filename='rewards.html')
