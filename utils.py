@@ -43,6 +43,6 @@ def plot_line(xs, ys):
   plotly.offline.plot({
     'data': [Scatter(x=xs, y=ys)],
     'layout': dict(title='Rewards',
-                   xaxis={'title': 'Total Reward'},
-                   yaxis={'title': 'Step'})
-  }, filename='rewards.html')
+                   xaxis={'title': 'Step'},
+                   yaxis={'title': 'Total Reward'})
+  }, filename='rewards.html', auto_open=False)
