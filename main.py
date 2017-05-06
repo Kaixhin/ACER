@@ -32,6 +32,7 @@ parser.add_argument('--entropy-weight', type=float, default=0.01, metavar='β', 
 parser.add_argument('--value-loss-weight', type=float, default=0.5, metavar='WEIGHT', help='Value loss weight')
 parser.add_argument('--max-gradient-norm', type=float, default=10, metavar='VALUE', help='Max value of gradient norm for gradient clipping')
 parser.add_argument('--rmsprop-decay', type=float, default=0.99, metavar='α', help='RMSprop decay factor')
+parser.add_argument('--evaluate', action='store_true', help='Evaluate only')
 parser.add_argument('--render', action='store_true', help='Render evaluation agent')
 
 
@@ -59,11 +60,12 @@ if __name__ == '__main__':
   p.start()
   processes.append(p)
 
-  # Start training agents
-  for rank in range(1, args.num_processes + 1):
-    p = mp.Process(target=train, args=(rank, args, T, shared_model, optimiser))
-    p.start()
-    processes.append(p)
+  if not args.evaluate:
+    # Start training agents
+    for rank in range(1, args.num_processes + 1):
+      p = mp.Process(target=train, args=(rank, args, T, shared_model, optimiser))
+      p.start()
+      processes.append(p)
 
   # Clean up
   for p in processes:

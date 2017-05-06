@@ -71,7 +71,10 @@ def test(rank, args, T, shared_model):
             episode_length))
           torch.save(model.state_dict(), 'model.pth')  # Save model params
           can_test = False  # Finish testing
-          break
+          if args.evaluate:
+            return
+          else:
+            break
     else:
       if T.value() - t_start >= args.test_interval:
         can_test = True
