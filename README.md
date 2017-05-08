@@ -4,7 +4,7 @@ async-rl
 
 Asynchronous advantage actor-critic (A3C) [[1]](#references) with generalised advantage estimation (GAE) [[2]](#references). The agent also receives the previous action, reward and a step counter [[3]](#references).
 
-Run with `OMP_NUM_THREADS=1 python main.py`. The environment flag prevents multiple OpenMP threads being run in each process.
+Run with `./run.sh <options>`. When running `main.py` directly, set `OMP_NUM_THREADS=1` to prevent multiple OpenMP threads being run (and clashing) in each process.
 
 Requirements
 ------------
@@ -17,7 +17,8 @@ Requirements
 Acknowledgements
 ----------------
 
-- [@ikostrikov](https://github.com/ikostrikov) for [pytorch-a3c](https://github.com/ikostrikov/pytorch-a3c) (used as reference)
+- [@ikostrikov](https://github.com/ikostrikov) for [pytorch-a3c](https://github.com/ikostrikov/pytorch-a3c)
+- [@apaszke](https://github.com/apaszke) for [Reinforcement Learning (DQN) tutorial](http://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
 
 References
 ----------
