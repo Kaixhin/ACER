@@ -47,9 +47,9 @@ def test(rank, args, T, shared_model):
         if args.render:
           env.render()
 
-        # Calculate policy and value
+        # Calculate policy
         input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length, volatile=True)
-        policy, value, (hx, cx) = model(input, (hx, cx))
+        policy, _, (hx, cx) = model(input, (hx, cx))
 
         # Choose action greedily
         action = policy.max(1)[1].data

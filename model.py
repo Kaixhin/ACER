@@ -14,7 +14,7 @@ class ActorCritic(nn.Module):
     self.fc1 = nn.Linear(input_size, hidden_size)
     self.lstm = nn.LSTMCell(hidden_size, hidden_size)
     self.fc_actor = nn.Linear(hidden_size, action_space.n)
-    self.fc_critic = nn.Linear(hidden_size, 1)
+    self.fc_critic = nn.Linear(hidden_size, action_space.n)
 
     # Xavier weight initialisation
     for name, p in self.named_parameters():

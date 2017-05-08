@@ -55,12 +55,13 @@ def train(rank, args, T, shared_model, optimiser):
       cx = Variable(cx.data)
 
     # Lists of outputs for training
-    values, log_probs, rewards, entropies = [], [], [], []
+    Qs, Vs, log_probs, rewards, entropies = [], [], [], [], []
 
     while not done and t - t_start < args.t_max:
       input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
-      # Calculate policy and value
-      policy, value, (hx, cx) = model(input, (hx, cx))
+      # Calculate policy and values
+      policy, Q, (hx, cx) = model(input, (hx, cx))
+      V = (policy * Q).sum(1)  # V is expectation of Q under π
       log_policy = policy.log()
       entropy = -(log_policy * policy).sum(1)
 
@@ -75,7 +76,8 @@ def train(rank, args, T, shared_model, optimiser):
 
       # Save outputs for training
       memory.push(state, action, next_state, reward, done)  # Save in memory
-      values.append(value)
+      Qs.append(Q)
+      Vs.append(V)
       log_probs.append(log_prob)
       rewards.append(reward)
       entropies.append(entropy)
@@ -93,30 +95,56 @@ def train(rank, args, T, shared_model, optimiser):
     if done:
       R = torch.zeros(1, 1)
     else:
-      _, value, _ = model(input, (hx, cx))
-      R = value.data
-    values.append(Variable(R))
+      policy, Q, _ = model(input, (hx, cx))
+      policy, Q = policy.data, Q.data
+      V = (policy * Q).sum(1)
+      R = V
+      # TODO: Check if the following is correct
+      action = policy.multinomial().data
+      log_prob = policy.log().gather(1, Variable(action))
+      Qs.append(Variable(Q))
+      log_probs.append(log_prob)
+    Vs.append(Variable(R))
 
     # Train the network
     policy_loss = 0
     value_loss = 0
     R = Variable(R)
     A_GAE = torch.zeros(1, 1)  # Generalised advantage estimator Ψ
+    Qrets = [None] * len(Vs)
     # Calculate n-step returns in forward view, stepping backwards from the last state
     for i in reversed(range(len(rewards))):
       # R ← r_i + γR
       R = rewards[i] + args.discount * R
+      """
       # Advantage A = R - V(s_i; θ)
-      A = R - values[i]
+      A = R - Vs[i]
       # dθ ← dθ - ∂A^2/∂θ
       value_loss += A ** 2
+      """
 
-      # TD residual δ = r + γV(s_i+1; θ) - V(s_i; θ)
-      td_error = rewards[i] + args.discount * values[i + 1].data - values[i].data
+      # ρ_i+1 = π(a_i+1|s_i+1) / µ(a_i+1|s_i+1)
+      if len(log_probs) <= i + 1:
+        importance_weight = torch.FloatTensor([args.importance_weight_truncation])
+        Qdiff = torch.zeros(1, action_size)
+        Qrets[i + 1] = torch.zeros(1, action_size)
+      else:
+        importance_weight = log_probs[i + 1].data.exp() / 1  # TODO: Where does mu come from?
+        Qdiff = Qrets[i + 1] - Qs[i + 1].data
+      # ρ¯_i+1 = min(c, ρ_i+1)
+      truncated_importance_weight = torch.clamp(importance_weight, min=args.importance_weight_truncation)
+      # Qret(s_i, a_i) = r_i + γρ¯_i+1[Qret(s_i+1, s_t+1) − Q(s_t+1, s_t+1)] + γV(s_t+1)
+      Qrets[i] = rewards[i] + args.discount * truncated_importance_weight.expand_as(Qdiff) * \
+          Qdiff + args.discount * Vs[i + 1].data.expand_as(Qdiff)
+      # dθ ← dθ - (Qret(s_i, a_i) - Q(s_i, a_i))∇θ∙Q(s_i, a_i)
+      value_loss += (Variable(Qrets[i]) - Qs[i]).mean()  # TODO: Should operate only a of Q?
+
+      # TD residual δ = r_i + γV(s_i+1; θ) - V(s_i; θ)
+      td_error = rewards[i] + args.discount * Vs[i + 1].data - Vs[i].data
       # Generalised advantage estimator Ψ (roughly of form ∑(γλ)^t∙δ)
       A_GAE = A_GAE * args.discount * args.gae_discount + td_error
-      # dθ ← dθ - ∇θ∙log(π(a_i|s_i; θ))∙Ψ - β∙∇θH(π(s_i; θ))
-      policy_loss -= log_probs[i] * Variable(A_GAE) - args.entropy_weight * entropies[i]
+      # dθ ← dθ + ∇θ∙log(π(a_i|s_i; θ))∙Ψ - β∙∇θH(π(s_i; θ))
+      policy_loss += -log_probs[i] * Variable(A_GAE) + args.entropy_weight * entropies[i]
 
     # TODO: Zero local grads too surely? When transferring, aren't shared lost anyway?
     optimiser.zero_grad()
@@ -128,7 +156,7 @@ def train(rank, args, T, shared_model, optimiser):
     # Transfer gradients to shared model and update
     _transfer_grads_to_shared_model(model, shared_model)
     optimiser.step()
-    if not args.no_lr_decay:
+    if args.lr_decay:
       # Decay learning rate
       _decay_learning_rate(optimiser, args.T_max)
 
