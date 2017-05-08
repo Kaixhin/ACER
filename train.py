@@ -3,6 +3,7 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 
+from memory import ReplayMemory
 from model import ActorCritic
 from utils import action_to_one_hot, extend_input, state_to_tensor
 
@@ -29,6 +30,8 @@ def train(rank, args, T, shared_model, optimiser):
   action_size = env.action_space.n
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.train()
+
+  memory = ReplayMemory(args.memory_capacity)
 
   t = 1  # Thread step counter
   done = True  # Start new episode
@@ -66,11 +69,12 @@ def train(rank, args, T, shared_model, optimiser):
       log_prob = log_policy.gather(1, Variable(action))  # Graph broken as loss for stochastic action calculated manually
 
       # Step
-      state, reward, done, _ = env.step(action[0, 0])
-      state = state_to_tensor(state)
+      next_state, reward, done, _ = env.step(action[0, 0])
+      next_state = state_to_tensor(next_state)
       reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
 
       # Save outputs for training
+      memory.push(state, action, next_state, reward, done)  # Save in memory
       values.append(value)
       log_probs.append(log_prob)
       rewards.append(reward)
@@ -83,6 +87,7 @@ def train(rank, args, T, shared_model, optimiser):
       # Increase episode counter
       episode_length += 1
       done = done or episode_length >= args.max_episode_length
+      state = next_state
 
     # Return R = 0 for terminal s or V(s_i; θ) for non-terminal s
     if done:
