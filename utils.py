@@ -20,9 +20,9 @@ class Counter():
       return self.val.value
 
 
-# Converts an observation from the OpenAI Gym (a numpy array) to a batch tensor
-def observation_to_tensor(observation):
-  return torch.from_numpy(observation).float().unsqueeze(0)
+# Converts a state from the OpenAI Gym (a numpy array) to a batch tensor
+def state_to_tensor(state):
+  return torch.from_numpy(state).float().unsqueeze(0)
 
 
 # Converts an index and size into a one-hot batch tensor
@@ -32,11 +32,11 @@ def action_to_one_hot(action_index, action_size):
   return action
 
 
-# Creates an extended input (observation + previous action + reward + timestep)
-def extend_input(observation, action, reward, timestep, volatile=False):
+# Creates an extended input (state + previous action + reward + timestep)
+def extend_input(state, action, reward, timestep, volatile=False):
   reward = torch.Tensor([reward]).unsqueeze(0)
   timestep = torch.Tensor([timestep]).unsqueeze(0)
-  return Variable(torch.cat((observation, action, reward, timestep), 1), volatile=volatile)
+  return Variable(torch.cat((state, action, reward, timestep), 1), volatile=volatile)
 
 
 def plot_line(xs, ys):

@@ -4,7 +4,7 @@ from torch import nn
 from torch.autograd import Variable
 
 from model import ActorCritic
-from utils import action_to_one_hot, extend_input, observation_to_tensor
+from utils import action_to_one_hot, extend_input, state_to_tensor
 
 
 def _transfer_grads_to_shared_model(model, shared_model):
@@ -44,7 +44,7 @@ def train(rank, args, T, shared_model, optimiser):
       hx = Variable(torch.zeros(1, args.hidden_size))
       cx = Variable(torch.zeros(1, args.hidden_size))
       # Reset environment and done flag
-      observation = observation_to_tensor(env.reset())
+      state = state_to_tensor(env.reset())
       action, reward, done, episode_length = torch.LongTensor([0]).unsqueeze(0), 0, False, 0
     elif not args.no_truncate:
       # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
@@ -55,7 +55,7 @@ def train(rank, args, T, shared_model, optimiser):
     values, log_probs, rewards, entropies = [], [], [], []
 
     while not done and t - t_start < args.t_max:
-      input = extend_input(observation, action_to_one_hot(action, action_size), reward, episode_length)
+      input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
       # Calculate policy and value
       policy, value, (hx, cx) = model(input, (hx, cx))
       log_policy = policy.log()
@@ -66,8 +66,8 @@ def train(rank, args, T, shared_model, optimiser):
       log_prob = log_policy.gather(1, Variable(action))  # Graph broken as loss for stochastic action calculated manually
 
       # Step
-      observation, reward, done, _ = env.step(action[0, 0])
-      observation = observation_to_tensor(observation)
+      state, reward, done, _ = env.step(action[0, 0])
+      state = state_to_tensor(state)
       reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
 
       # Save outputs for training

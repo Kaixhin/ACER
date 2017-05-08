@@ -5,7 +5,7 @@ import torch
 from torch.autograd import Variable
 
 from model import ActorCritic
-from utils import action_to_one_hot, extend_input, observation_to_tensor, plot_line
+from utils import action_to_one_hot, extend_input, state_to_tensor, plot_line
 
 
 def test(rank, args, T, shared_model):
@@ -35,7 +35,7 @@ def test(rank, args, T, shared_model):
           hx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
           cx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
           # Reset environment and done flag
-          observation = observation_to_tensor(env.reset())
+          state = state_to_tensor(env.reset())
           action, reward, done, episode_length = torch.LongTensor([0]).unsqueeze(0), 0, False, 0
           reward_sum = 0
         else:
@@ -48,15 +48,15 @@ def test(rank, args, T, shared_model):
           env.render()
 
         # Calculate policy and value
-        input = extend_input(observation, action_to_one_hot(action, action_size), reward, episode_length, volatile=True)
+        input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length, volatile=True)
         policy, value, (hx, cx) = model(input, (hx, cx))
 
         # Choose action greedily
         action = policy.max(1)[1].data
 
         # Step
-        observation, reward, done, _ = env.step(action[0, 0])
-        observation = observation_to_tensor(observation)
+        state, reward, done, _ = env.step(action[0, 0])
+        state = state_to_tensor(state)
         reward_sum += reward
 
         # Increase episode counter
