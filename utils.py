@@ -2,7 +2,6 @@ import plotly
 from plotly.graph_objs import Scatter
 import torch
 from torch import multiprocessing as mp
-from torch.autograd import Variable
 
 
 # Global counter
@@ -36,7 +35,7 @@ def action_to_one_hot(action_index, action_size):
 def extend_input(state, action, reward, timestep, volatile=False):
   reward = torch.Tensor([reward]).unsqueeze(0)
   timestep = torch.Tensor([timestep]).unsqueeze(0)
-  return Variable(torch.cat((state, action, reward, timestep), 1), volatile=volatile)
+  return torch.cat((state, action, reward, timestep), 1)
 
 
 def plot_line(xs, ys):

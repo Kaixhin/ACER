@@ -1,23 +1,20 @@
 import random
-from collections import namedtuple
+from collections import deque, namedtuple
 
-Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward', 'done'))
+Transition = namedtuple('Transition', ('state', 'action', 'reward'))
 
 
 class ReplayMemory():
   def __init__(self, capacity):
-    self.capacity = capacity
-    self.memory = []
-    self.position = 0
+    self.memory = deque(maxlen=capacity)
 
-  def push(self, *args):
-    if len(self.memory) < self.capacity:
-      self.memory.append(None)
-    self.memory[self.position] = Transition(*args)
-    self.position = (self.position + 1) % self.capacity
+  def append(self, state, action, reward):
+    # Terminal states are saved with actions/rewards as None
+    self.memory.append(Transition(state, action, reward))
 
-  def sample(self, batch_size):
-    return random.sample(self.memory, batch_size)
+  def sample(self, n):
+    assert len(self.memory) >= n
+    return random.sample(self.memory, n)
 
   def __len__(self):
     return len(self.memory)

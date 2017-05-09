@@ -48,8 +48,8 @@ def test(rank, args, T, shared_model):
           env.render()
 
         # Calculate policy
-        input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length, volatile=True)
-        policy, _, (hx, cx) = model(input, (hx, cx))
+        input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
+        policy, _, (hx, cx) = model(Variable(input, volatile=True), (hx, cx))
 
         # Choose action greedily
         action = policy.max(1)[1].data
@@ -58,10 +58,8 @@ def test(rank, args, T, shared_model):
         state, reward, done, _ = env.step(action[0, 0])
         state = state_to_tensor(state)
         reward_sum += reward
-
-        # Increase episode counter
-        episode_length += 1
-        done = done or episode_length >= args.max_episode_length
+        done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
+        episode_length += 1  # Increase episode counter
 
         # Log and reset statistics at the end of every episode
         if done:

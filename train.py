@@ -60,7 +60,7 @@ def train(rank, args, T, shared_model, optimiser):
     while not done and t - t_start < args.t_max:
       # Calculate policy and values
       input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
-      policy, Q, (hx, cx) = model(input, (hx, cx))
+      policy, Q, (hx, cx) = model(Variable(input), (hx, cx))
       V = (policy * Q).sum(1)  # V is expectation of Q under π
       log_policy = policy.log()
       entropy = -(log_policy * policy).sum(1)
@@ -75,9 +75,12 @@ def train(rank, args, T, shared_model, optimiser):
       next_state, reward, done, _ = env.step(action[0, 0])
       next_state = state_to_tensor(next_state)
       reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
+      done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
+      episode_length += 1  # Increase episode counter
 
-      # Save outputs for training
-      memory.push(state, action, next_state, reward, done)  # Save in memory
+      # Save part of transition for offline training
+      memory.append(input, action[0, 0], reward)
+      # Save outputs for online training
       Qs.append(Q)
       Vs.append(V)
       log_probs.append(log_prob)
@@ -90,9 +93,7 @@ def train(rank, args, T, shared_model, optimiser):
       t += 1
       T.increment()
 
-      # Increase episode counter
-      episode_length += 1
-      done = done or episode_length >= args.max_episode_length
+      # Update state
       state = next_state
 
     # Break graph for last values calculated (used for targets, not directly as model outputs)
@@ -100,6 +101,9 @@ def train(rank, args, T, shared_model, optimiser):
       # R = 0 for terminal s
       R = torch.zeros(1, 1)
       Q = torch.zeros(1, 1)  # TODO: Q for terminal s is 0, right?
+
+      # Save terminal state for offline training
+      memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None)
     else:
       # R = V(s_i; θ) for non-terminal s
       policy, Q, _ = model(input, (hx, cx))
