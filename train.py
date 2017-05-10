@@ -1,6 +1,7 @@
 import gym
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.autograd import Variable
 
 from memory import ReplayMemory
@@ -20,6 +21,40 @@ def _decay_learning_rate(optimiser, steps):
   eps = 1e-32
   for param_group in optimiser.param_groups:
     param_group['lr'] = max(param_group['lr'] - param_group['lr'] / steps, eps)
+
+
+def _train_off_policy(args, model, shared_model, optimiser, memory):
+    pass
+    """
+    # Train the network off-policy
+    batch = memory.sample(args.batch_size)
+    batch_size = len(batch)
+    states, actions, rewards, next_states, dones = zip(*batch)
+    states = Variable(torch.cat(states, 0))
+    actions = Variable(torch.LongTensor(actions).unsqueeze(1))
+    rewards = Variable(torch.Tensor(rewards).unsqueeze(1), volatile=True)
+    next_states = Variable(torch.cat(next_states, 0), volatile=True)
+    dones = Variable(torch.Tensor(dones).unsqueeze(1), volatile=True)
+
+    hx = Variable(torch.zeros(batch_size, args.hidden_size))
+    cx = Variable(torch.zeros(batch_size, args.hidden_size))
+    # TODO: Move away from traditional DQN rule
+    _, next_Qs, _ = shared_model(next_states, (hx, cx))  # Treat as target network for now
+    max_next_Qs = next_Qs.max(1)[0]
+    targets = rewards + args.discount * (1 - dones) * max_next_Qs  # r + γV(s_i+1)
+    targets.volatile = False  # Once computed without retaining state, remove volatility
+    _, Qs, _ = model(states, (hx, cx))
+    loss = F.smooth_l1_loss(Qs.gather(1, actions), targets)
+    loss.backward()
+
+    optimiser.zero_grad()
+    # Gradient (L2) norm clipping
+    nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
+
+    # Transfer gradients to shared model and update
+    _transfer_grads_to_shared_model(model, shared_model)
+    optimiser.step()
+    """
 
 
 def train(rank, args, T, shared_model, optimiser):
@@ -79,7 +114,7 @@ def train(rank, args, T, shared_model, optimiser):
       episode_length += 1  # Increase episode counter
 
       # Save part of transition for offline training
-      memory.append(input, action[0, 0], reward)
+      memory.append(input, action.data[0, 0], reward, log_prob.data.exp()[0, 0])
       # Save outputs for online training
       Qs.append(Q)
       Vs.append(V)
@@ -103,7 +138,7 @@ def train(rank, args, T, shared_model, optimiser):
       Q = Variable(torch.zeros(1, 1))  # TODO: Q for terminal s is 0, right?
 
       # Save terminal state for offline training
-      memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None)
+      memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
     else:
       # R = V(s_i; θ) for non-terminal s
       policy, Q, _ = model(input, (hx, cx))
@@ -116,7 +151,7 @@ def train(rank, args, T, shared_model, optimiser):
     Vs.append(R.detach())
     Qs.append(Q.detach())
 
-    # Train the network
+    # Train the network on-policy
     policy_loss = 0
     value_loss = 0
     R = R.detach()
@@ -177,5 +212,8 @@ def train(rank, args, T, shared_model, optimiser):
     if args.lr_decay:
       # Decay learning rate
       _decay_learning_rate(optimiser, args.T_max)
+
+    # Train the network off-policy
+    _train_off_policy(args, model, shared_model, optimiser, memory)
 
   env.close()
