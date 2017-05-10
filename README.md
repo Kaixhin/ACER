@@ -9,7 +9,7 @@ Run with `./run.sh <options>`. When running `main.py` directly, set `OMP_NUM_THR
 Requirements
 ------------
 
-- [Python 3](https://www.python.org/)
+- [Python](https://www.python.org/)
 - [PyTorch](http://pytorch.org/)
 - [OpenAI Gym](https://gym.openai.com/)
 - [Plotly](https://plot.ly/python/)
