@@ -29,7 +29,6 @@ parser.add_argument('--lr', type=float, default=1e-3, metavar='η', help='Learni
 parser.add_argument('--no-lr-decay', action='store_true', help='Linearly decay learning rate to 0')
 parser.add_argument('--no-truncate', action='store_true', help='Disable BPTT truncation at t-max steps')
 parser.add_argument('--entropy-weight', type=float, default=0.01, metavar='β', help='Entropy regularisation weight')
-parser.add_argument('--value-loss-weight', type=float, default=0.5, metavar='WEIGHT', help='Value loss weight')
 parser.add_argument('--max-gradient-norm', type=float, default=10, metavar='VALUE', help='Max value of gradient norm for gradient clipping')
 parser.add_argument('--rmsprop-decay', type=float, default=0.99, metavar='α', help='RMSprop decay factor')
 parser.add_argument('--evaluate', action='store_true', help='Evaluate only')

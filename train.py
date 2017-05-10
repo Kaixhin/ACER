@@ -45,11 +45,11 @@ def train(rank, args, T, shared_model, optimiser):
       cx = Variable(torch.zeros(1, args.hidden_size))
       # Reset environment and done flag
       state = state_to_tensor(env.reset())
-      action, reward, done, episode_length = torch.LongTensor([0]).unsqueeze(0), 0, False, 0
+      action, reward, done, episode_length = Variable(torch.LongTensor([0]).unsqueeze(0)), 0, False, 0
     elif not args.no_truncate:
       # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
-      hx = Variable(hx.data)
-      cx = Variable(cx.data)
+      hx = hx.detach()
+      cx = cx.detach()
 
     # Lists of outputs for training
     values, log_probs, rewards, entropies = [], [], [], []
@@ -62,11 +62,11 @@ def train(rank, args, T, shared_model, optimiser):
       entropy = -(log_policy * policy).sum(1)
 
       # Sample action
-      action = policy.multinomial().data
-      log_prob = log_policy.gather(1, Variable(action))  # Graph broken as loss for stochastic action calculated manually
+      action = policy.multinomial()
+      log_prob = log_policy.gather(1, action.detach())  # Graph broken as loss for stochastic action calculated manually
 
       # Step
-      state, reward, done, _ = env.step(action[0, 0])
+      state, reward, done, _ = env.step(action.data[0, 0])
       state = state_to_tensor(state)
       reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
 
@@ -86,16 +86,15 @@ def train(rank, args, T, shared_model, optimiser):
 
     # Return R = 0 for terminal s or V(s_i; θ) for non-terminal s
     if done:
-      R = torch.zeros(1, 1)
+      R = Variable(torch.zeros(1, 1))
     else:
-      _, value, _ = model(input, (hx, cx))
-      R = value.data
-    values.append(Variable(R))
+      _, R, _ = model(input, (hx, cx))
+    values.append(R.detach())
 
     # Train the network
     policy_loss = 0
     value_loss = 0
-    R = Variable(R)
+    R = R.detach()
     A_GAE = torch.zeros(1, 1)  # Generalised advantage estimator Ψ
     # Calculate n-step returns in forward view, stepping backwards from the last state
     for i in reversed(range(len(rewards))):
@@ -104,7 +103,7 @@ def train(rank, args, T, shared_model, optimiser):
       # Advantage A = R - V(s_i; θ)
       A = R - values[i]
       # dθ ← dθ - ∂A^2/∂θ
-      value_loss += A ** 2
+      value_loss += 0.5 * A ** 2  # Least squares error
 
       # TD residual δ = r + γV(s_i+1; θ) - V(s_i; θ)
       td_error = rewards[i] + args.discount * values[i + 1].data - values[i].data
@@ -116,7 +115,7 @@ def train(rank, args, T, shared_model, optimiser):
     # TODO: Zero local grads too surely? When transferring, aren't shared lost anyway?
     optimiser.zero_grad()
     # Note that losses were defined as negatives of normal update rules for gradient descent
-    (policy_loss + args.value_loss_weight * value_loss).backward(retain_variables=args.no_truncate)
+    (policy_loss + value_loss).backward(retain_variables=args.no_truncate)
     # Gradient (L2) norm clipping
     nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
 

@@ -36,12 +36,8 @@ def test(rank, args, T, shared_model):
           cx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
           # Reset environment and done flag
           state = state_to_tensor(env.reset())
-          action, reward, done, episode_length = torch.LongTensor([0]).unsqueeze(0), 0, False, 0
+          action, reward, done, episode_length = Variable(torch.LongTensor([0]).unsqueeze(0)), 0, False, 0
           reward_sum = 0
-        else:
-          # Break graph for memory efficiency
-          hx = Variable(hx.data, volatile=True)
-          cx = Variable(cx.data, volatile=True)
 
         # Optionally render validation states
         if args.render:
@@ -49,13 +45,13 @@ def test(rank, args, T, shared_model):
 
         # Calculate policy and value
         input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length, volatile=True)
-        policy, value, (hx, cx) = model(input, (hx, cx))
+        policy, value, (hx, cx) = model(input, (hx.detach(), cx.detach()))  # Break graph for memory efficiency
 
         # Choose action greedily
-        action = policy.max(1)[1].data
+        action = policy.max(1)[1]
 
         # Step
-        state, reward, done, _ = env.step(action[0, 0])
+        state, reward, done, _ = env.step(action.data[0, 0])
         state = state_to_tensor(state)
         reward_sum += reward
 
