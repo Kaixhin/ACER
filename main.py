@@ -22,7 +22,7 @@ parser.add_argument('--test-interval', type=int, default=50000, metavar='STEPS',
 parser.add_argument('--max-episode-length', type=int, default=500, metavar='LENGTH', help='Maximum episode length')
 parser.add_argument('--hidden-size', type=int, default=32, metavar='SIZE', help='Hidden size of LSTM cell')
 parser.add_argument('--model', type=str, metavar='PARAMS', help='Pretrained model (state dict)')
-parser.add_argument('--memory_capacity', type=int, default=10, metavar='CAPACITY', help='Experience replay memory capacity')
+parser.add_argument('--memory_capacity', type=int, default=100000, metavar='CAPACITY', help='Experience replay memory capacity')
 parser.add_argument('--discount', type=float, default=0.99, metavar='γ', help='Discount factor')
 parser.add_argument('--trace-decay', type=float, default=1, metavar='λ', help='Eligibility trace decay')
 parser.add_argument('--max-trace', type=float, default=10, metavar='c', help='Importance weight truncation value')

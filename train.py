@@ -31,7 +31,7 @@ def train(rank, args, T, shared_model, optimiser):
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.train()
 
-  memory = ReplayMemory(args.memory_capacity)
+  memory = ReplayMemory(args.memory_capacity, args.max_episode_length)
 
   t = 1  # Thread step counter
   done = True  # Start new episode
