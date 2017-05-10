@@ -34,4 +34,7 @@ class ActorCritic(nn.Module):
     x = self.elu(self.fc1(x))
     hx, cx = self.lstm(x, (hx, cx))
     x = hx
-    return self.softmax(self.fc_actor(x)), self.fc_critic(x), (hx, cx)
+    policy = self.softmax(self.fc_actor(x))
+    Q = self.fc_critic(x)
+    V = (Q * policy).sum(1)  # V is expectation of Q under π
+    return policy, Q, V, (hx, cx)

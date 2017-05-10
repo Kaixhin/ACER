@@ -45,7 +45,7 @@ def test(rank, args, T, shared_model):
 
         # Calculate policy
         input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
-        policy, _, (hx, cx) = model(Variable(input, volatile=True), (hx.detach(), cx.detach()))  # Break graph for memory efficiency
+        policy, _, _, (hx, cx) = model(Variable(input, volatile=True), (hx.detach(), cx.detach()))  # Break graph for memory efficiency
 
         # Choose action greedily
         action = policy.max(1)[1]

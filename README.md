@@ -9,7 +9,7 @@ Run with `./run.sh <options>`. When running `main.py` directly, set `OMP_NUM_THR
 Requirements
 ------------
 
-- [Python 3](https://www.python.org/)
+- [Python](https://www.python.org/)
 - [PyTorch](http://pytorch.org/)
 - [OpenAI Gym](https://gym.openai.com/)
 - [Plotly](https://plot.ly/python/)
@@ -19,6 +19,8 @@ Acknowledgements
 
 - [@ikostrikov](https://github.com/ikostrikov) for [pytorch-a3c](https://github.com/ikostrikov/pytorch-a3c)
 - [@apaszke](https://github.com/apaszke) for [Reinforcement Learning (DQN) tutorial](http://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
+- [@pfnet](https://github.com/pfnet) for [ChainerRL](https://github.com/pfnet/chainerrl)
+
 
 References
 ----------

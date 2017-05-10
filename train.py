@@ -57,7 +57,7 @@ def _train_off_policy(args, model, shared_model, optimiser, memory):
     """
 
 
-def train(rank, args, T, shared_model, optimiser):
+def train(rank, args, T, shared_model, average_model, optimiser):
   torch.manual_seed(args.seed + rank)
 
   env = gym.make(args.env)
@@ -66,7 +66,7 @@ def train(rank, args, T, shared_model, optimiser):
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.train()
 
-  memory = ReplayMemory(args.memory_capacity, args.max_episode_length)
+  memory = EpisodicReplayMemory(args.memory_capacity, args.max_episode_length)
 
   t = 1  # Thread step counter
   done = True  # Start new episode
@@ -81,6 +81,8 @@ def train(rank, args, T, shared_model, optimiser):
     if done:
       hx = Variable(torch.zeros(1, args.hidden_size))
       cx = Variable(torch.zeros(1, args.hidden_size))
+      avg_hx = Variable(torch.zeros(1, args.hidden_size))
+      avg_cx = Variable(torch.zeros(1, args.hidden_size))
       # Reset environment and done flag
       state = state_to_tensor(env.reset())
       action, reward, done, episode_length = Variable(torch.LongTensor([0]).unsqueeze(0)), 0, False, 0
@@ -88,15 +90,17 @@ def train(rank, args, T, shared_model, optimiser):
       # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
       hx = hx.detach()
       cx = cx.detach()
+      avg_hx = avg_hx.detach()
+      avg_cx = avg_cx.detach()
 
     # Lists of outputs for training
-    Qs, Vs, log_probs, states, actions, rewards, entropies = [], [], [], [], [], [], []
+    Qs, Vs, policies, average_policies, log_probs, rewards, entropies = [], [], [], [], [], [], []
 
     while not done and t - t_start < args.t_max:
       # Calculate policy and values
       input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
-      policy, Q, (hx, cx) = model(Variable(input), (hx, cx))
-      V = (policy * Q).sum(1)  # V is expectation of Q under π
+      policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
+      average_policy, _, (avg_hx, avg_cx) = average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
       log_policy = policy.log()
       entropy = -(log_policy * policy).sum(1)
 
@@ -104,7 +108,6 @@ def train(rank, args, T, shared_model, optimiser):
       action = policy.multinomial()
       # Graph broken as loss for stochastic action calculated manually
       log_prob = log_policy.gather(1, action.detach())  # Log probability of chosen action
-      Q = Q.gather(1, action.detach())  # Q-value of chosen action
 
       # Step
       next_state, reward, done, _ = env.step(action.data[0, 0])
@@ -118,9 +121,9 @@ def train(rank, args, T, shared_model, optimiser):
       # Save outputs for online training
       Qs.append(Q)
       Vs.append(V)
+      policies.append(policy)
+      average_policies.append(average_policy)
       log_probs.append(log_prob)
-      states.append(input)
-      actions.append(action)
       rewards.append(reward)
       entropies.append(entropy)
 
@@ -133,38 +136,48 @@ def train(rank, args, T, shared_model, optimiser):
 
     # Break graph for last values calculated (used for targets, not directly as model outputs)
     if done:
-      # R = 0 for terminal s
-      R = Variable(torch.zeros(1, 1))
-      Q = Variable(torch.zeros(1, 1))  # TODO: Q for terminal s is 0, right?
+      # Qret = 0 for terminal s
+      Qret = Variable(torch.zeros(1, 1))
 
       # Save terminal state for offline training
       memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
     else:
       # R = V(s_i; θ) for non-terminal s
       policy, Q, _ = model(input, (hx, cx))
-      R = (policy * Q).sum(1)
-      # TODO: Check if following part of if statement is correct
-      action = policy.multinomial()
-      log_prob = policy.log().gather(1, action.detach())
-      Q = Q.gather(1, action)
-      log_probs.append(log_prob.detach())
-    Vs.append(R.detach())
-    Qs.append(Q.detach())
+      # action = policy.multinomial()
+      # log_prob = policy.log().gather(1, action.detach())
+      Qret = (policy * Q).sum(1)
+      # log_probs.append(log_prob.detach())
+    # Qs.append(Q.detach())
 
     # Train the network on-policy
     policy_loss = 0
     value_loss = 0
-    R = R.detach()
+    Qret = Qret.detach()
     A_GAE = torch.zeros(1, 1)  # Generalised advantage estimator Ψ
-    Qrets = [None] * len(Vs)
+    # Qrets = [None] * len(Vs)
     # Calculate n-step returns in forward view, stepping backwards from the last state
-    for i in reversed(range(len(rewards))):
-      # R ← r_i + γR
-      R = rewards[i] + args.discount * R
-      # Advantage A = R - V(s_i; θ)
-      A = R - Vs[i]
+    for i in reversed(range(len(rewards))):  # TODO: Consider normalising loss by number of steps?
+      # Qret ← r_i + γQret
+      Qret = rewards[i] + args.discount * Qret
+      # Advantage A = Qret - V(s_i; θ)
+      A = Qret - Vs[i]
+      # g ← min(c, ρ_i)∙∇θ∙log(π(a_i|s_i; θ))∙A + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ))
+      g = min(args.max_trace, 1) * log_probs[i] * A + \
+          (max(1 - args.max_trace / 1, 0) * policies[i] * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
+      # k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
+      k = policies[i] * (policies[i].log() - average_policies[i])
+      
+      # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k - β∙∇θH(π(s_i; θ))
+      print(g)
+      print(k)
+      print(torch.mm(k.t(), g))
+      policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_max)
+      # + args.entropy_weight * entropies[i]     
+      quit()
+
       # dθ ← dθ - ∂A^2/∂θ
-      value_loss += 0.5 * A ** 2  # Least squares error
+      # value_loss += 0.5 * A ** 2  # Least squares error
 
       """
       if len(log_probs) > i + 1:

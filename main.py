@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import argparse
 import os
 import gym
@@ -25,9 +26,9 @@ parser.add_argument('--model', type=str, metavar='PARAMS', help='Pretrained mode
 parser.add_argument('--memory_capacity', type=int, default=100000, metavar='CAPACITY', help='Experience replay memory capacity')
 parser.add_argument('--discount', type=float, default=0.99, metavar='γ', help='Discount factor')
 parser.add_argument('--trace-decay', type=float, default=1, metavar='λ', help='Eligibility trace decay')
-parser.add_argument('--max-trace', type=float, default=10, metavar='c', help='Importance weight truncation value')
-parser.add_argument('--trust-update', type=float, default=0.99, metavar='α', help='Trust region update')
-parser.add_argument('--trust-max', type=float, default=1, metavar='δ', help='Trust region something')
+parser.add_argument('--trace-max', type=float, default=10, metavar='c', help='Importance weight truncation value')
+parser.add_argument('--trust-region-decay', type=float, default=0.99, metavar='α', help='Trust region model decay rate')
+parser.add_argument('--trust-region-threshold', type=float, default=1, metavar='δ', help='Trust region threshold')
 parser.add_argument('--reward-clip', action='store_true', help='Clip rewards to [-1, 1]')
 parser.add_argument('--lr', type=float, default=1e-3, metavar='η', help='Learning rate')
 parser.add_argument('--lr-decay', action='store_true', help='Linearly decay learning rate to 0')
@@ -56,6 +57,10 @@ if __name__ == '__main__':
   if args.model and os.path.isfile(args.model):
     # Load pretrained weights
     shared_model.load_state_dict(torch.load(args.model))
+  # Create average network
+  average_model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
+  average_model.load_state_dict(shared_model.state_dict())
+  average_model.share_memory()
   # Create optimiser for shared network parameters with shared statistics
   optimiser = SharedRMSprop(shared_model.parameters(), lr=args.lr, alpha=args.rmsprop_decay)
   optimiser.share_memory()
@@ -70,7 +75,7 @@ if __name__ == '__main__':
   if not args.evaluate:
     # Start training agents
     for rank in range(1, args.num_processes + 1):
-      p = mp.Process(target=train, args=(rank, args, T, shared_model, optimiser))
+      p = mp.Process(target=train, args=(rank, args, T, shared_model, average_model, optimiser))
       p.start()
       processes.append(p)
 
