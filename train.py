@@ -48,11 +48,11 @@ def train(rank, args, T, shared_model, optimiser):
       cx = Variable(torch.zeros(1, args.hidden_size))
       # Reset environment and done flag
       state = state_to_tensor(env.reset())
-      action, reward, done, episode_length = torch.LongTensor([0]).unsqueeze(0), 0, False, 0
+      action, reward, done, episode_length = Variable(torch.LongTensor([0]).unsqueeze(0)), 0, False, 0
     elif not args.no_truncate:
       # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
-      hx = Variable(hx.data)
-      cx = Variable(cx.data)
+      hx = hx.detach()
+      cx = cx.detach()
 
     # Lists of outputs for training
     Qs, Vs, log_probs, states, actions, rewards, entropies = [], [], [], [], [], [], []
@@ -66,13 +66,13 @@ def train(rank, args, T, shared_model, optimiser):
       entropy = -(log_policy * policy).sum(1)
 
       # Sample action
-      action = policy.multinomial().data
-      # Break graph as loss for stochastic action calculated manually
-      log_prob = log_policy.gather(1, Variable(action))  # Log probability of chosen action
-      Q = Q.gather(1, Variable(action))  # Q-value of chosen action
+      action = policy.multinomial()
+      # Graph broken as loss for stochastic action calculated manually
+      log_prob = log_policy.gather(1, action.detach())  # Log probability of chosen action
+      Q = Q.gather(1, action.detach())  # Q-value of chosen action
 
       # Step
-      next_state, reward, done, _ = env.step(action[0, 0])
+      next_state, reward, done, _ = env.step(action.data[0, 0])
       next_state = state_to_tensor(next_state)
       reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
       done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
@@ -99,28 +99,27 @@ def train(rank, args, T, shared_model, optimiser):
     # Break graph for last values calculated (used for targets, not directly as model outputs)
     if done:
       # R = 0 for terminal s
-      R = torch.zeros(1, 1)
-      Q = torch.zeros(1, 1)  # TODO: Q for terminal s is 0, right?
+      R = Variable(torch.zeros(1, 1))
+      Q = Variable(torch.zeros(1, 1))  # TODO: Q for terminal s is 0, right?
 
       # Save terminal state for offline training
       memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None)
     else:
       # R = V(s_i; θ) for non-terminal s
       policy, Q, _ = model(input, (hx, cx))
-      V = (policy * Q).sum(1)
-      R = V.data
+      R = (policy * Q).sum(1)
       # TODO: Check if following part of if statement is correct
-      action = policy.multinomial().data
-      log_prob = policy.log().gather(1, action).data
-      Q = Q.gather(1, action).data
-      log_probs.append(log_prob)
-    Vs.append(Variable(R))
-    Qs.append(Variable(Q))
+      action = policy.multinomial()
+      log_prob = policy.log().gather(1, action.detach())
+      Q = Q.gather(1, action)
+      log_probs.append(log_prob.detach())
+    Vs.append(R.detach())
+    Qs.append(Q.detach())
 
     # Train the network
     policy_loss = 0
     value_loss = 0
-    R = Variable(R)
+    R = R.detach()
     A_GAE = torch.zeros(1, 1)  # Generalised advantage estimator Ψ
     Qrets = [None] * len(Vs)
     # Calculate n-step returns in forward view, stepping backwards from the last state
@@ -130,7 +129,7 @@ def train(rank, args, T, shared_model, optimiser):
       # Advantage A = R - V(s_i; θ)
       A = R - Vs[i]
       # dθ ← dθ - ∂A^2/∂θ
-      value_loss += A ** 2
+      value_loss += 0.5 * A ** 2  # Least squares error
 
       """
       if len(log_probs) > i + 1:
@@ -168,7 +167,7 @@ def train(rank, args, T, shared_model, optimiser):
     # TODO: Zero local grads too surely? When transferring, aren't shared lost anyway?
     optimiser.zero_grad()
     # Note that losses were defined as negatives of normal update rules for gradient descent
-    (policy_loss + args.value_loss_weight * value_loss).backward(retain_variables=args.no_truncate)
+    (policy_loss + value_loss).backward(retain_variables=args.no_truncate)
     # Gradient (L2) norm clipping
     nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
 

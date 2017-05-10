@@ -5,7 +5,7 @@ from torch.nn import init
 # TODO: Wrap up network into Agent class w/ perceive, act, train methods etc.
 class ActorCritic(nn.Module):
   def __init__(self, observation_space, action_space, hidden_size):
-    super().__init__()
+    super(ActorCritic, self).__init__()
     self.elu = nn.ELU(inplace=True)
     self.softmax = nn.Softmax()
 
