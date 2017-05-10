@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Variable
 
-from memory import ReplayMemory
+from memory import EpisodicReplayMemory
 from model import ActorCritic
 from utils import action_to_one_hot, extend_input, state_to_tensor
 
@@ -100,7 +100,7 @@ def train(rank, args, T, shared_model, average_model, optimiser):
       # Calculate policy and values
       input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
       policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
-      average_policy, _, (avg_hx, avg_cx) = average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
+      average_policy, _, _, (avg_hx, avg_cx) = average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
       log_policy = policy.log()
       entropy = -(log_policy * policy).sum(1)
 
@@ -163,18 +163,20 @@ def train(rank, args, T, shared_model, average_model, optimiser):
       # Advantage A = Qret - V(s_i; θ)
       A = Qret - Vs[i]
       # g ← min(c, ρ_i)∙∇θ∙log(π(a_i|s_i; θ))∙A + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ))
-      g = min(args.max_trace, 1) * log_probs[i] * A + \
-          (max(1 - args.max_trace / 1, 0) * policies[i] * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
+      g = min(args.trace_max, 1) * log_probs[i] * A + \
+          (max(1 - args.trace_max / 1, 0) * policies[i] * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
       # k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-      k = policies[i] * (policies[i].log() - average_policies[i])
+      k = policies[i] * (policies[i].log() - average_policies[i].log())  # TODO: Fix undefined log(0)
       
+      """
       # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k - β∙∇θH(π(s_i; θ))
       print(g)
       print(k)
       print(torch.mm(k.t(), g))
-      policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_max)
+      policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_region_threshold)
       # + args.entropy_weight * entropies[i]     
       quit()
+      """
 
       # dθ ← dθ - ∂A^2/∂θ
       # value_loss += 0.5 * A ** 2  # Least squares error
@@ -204,14 +206,16 @@ def train(rank, args, T, shared_model, average_model, optimiser):
       # dθ ← dθ - (Qret(s_i, a_i) - Q(s_i, a_i))∇θ∙Q(s_i, a_i)
       value_loss += (Variable(Qrets[i]) - Qs[i]).mean()  # TODO: Should operate only a of Q?
       """
-
+      """
       # TD residual δ = r_i + γV(s_i+1; θ) - V(s_i; θ)
       td_error = rewards[i] + args.discount * Vs[i + 1].data - Vs[i].data
       # Generalised advantage estimator Ψ (roughly of form ∑(γλ)^t∙δ)
       A_GAE = A_GAE * args.discount * args.trace_decay + td_error
       # dθ ← dθ + ∇θ∙log(π(a_i|s_i; θ))∙Ψ - β∙∇θH(π(s_i; θ))
       policy_loss += -log_probs[i] * Variable(A_GAE) + args.entropy_weight * entropies[i]
+      """
 
+    """
     # TODO: Zero local grads too surely? When transferring, aren't shared lost anyway?
     optimiser.zero_grad()
     # Note that losses were defined as negatives of normal update rules for gradient descent
@@ -228,5 +232,6 @@ def train(rank, args, T, shared_model, average_model, optimiser):
 
     # Train the network off-policy
     _train_off_policy(args, model, shared_model, optimiser, memory)
+    """
 
   env.close()

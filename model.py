@@ -30,11 +30,10 @@ class ActorCritic(nn.Module):
         init.constant(p[forget_start_idx:forget_end_idx], 1)
 
   def forward(self, x, h):
-    hx, cx = h
     x = self.elu(self.fc1(x))
-    hx, cx = self.lstm(x, (hx, cx))
-    x = hx
+    h = self.lstm(x, h)  # h is (hidden state, cell state)
+    x = h[0]
     policy = self.softmax(self.fc_actor(x))
     Q = self.fc_critic(x)
     V = (Q * policy).sum(1)  # V is expectation of Q under π
-    return policy, Q, V, (hx, cx)
+    return policy, Q, V, h
