@@ -1,5 +1,5 @@
 import plotly
-from plotly.graph_objs import Scatter
+from plotly.graph_objs import Scatter, Line
 import torch
 from torch import multiprocessing as mp
 from torch.autograd import Variable
@@ -39,10 +39,20 @@ def extend_input(state, action, reward, timestep, volatile=False):
   return Variable(torch.cat((state, action, reward, timestep), 1), volatile=volatile)
 
 
-def plot_line(xs, ys):
+# Plots mean and standard deviation bars of a population over time
+def plot_line(xs, ys_population):
+  ys = torch.Tensor(ys_population)
+  ys_mean = ys.mean(1).squeeze()
+  ys_std = ys.std(1).squeeze()
+  ys_upper, ys_lower = ys_mean + ys_std, ys_mean - ys_std
+
+  trace_upper = Scatter(x=xs, y=ys_upper.numpy(), line=Line(color='transparent'), showlegend=False)
+  trace_mean = Scatter(x=xs, y=ys_mean.numpy(), fill='tonexty', fillcolor='rgba(0, 176, 246, 0.2)', line=Line(color='rgb(0, 176, 246)'), name='Average Reward')
+  trace_lower = Scatter(x=xs, y=ys_lower.numpy(), fill='tonexty', fillcolor='rgba(0, 176, 246, 0.2)', line=Line(color='transparent'), showlegend=False)
+
   plotly.offline.plot({
-    'data': [Scatter(x=xs, y=ys)],
+    'data': [trace_upper, trace_mean, trace_lower],
     'layout': dict(title='Rewards',
                    xaxis={'title': 'Step'},
-                   yaxis={'title': 'Total Reward'})
+                   yaxis={'title': 'Average Reward'})
   }, filename='rewards.html', auto_open=False)

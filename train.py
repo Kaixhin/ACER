@@ -108,7 +108,7 @@ def train(rank, args, T, shared_model, optimiser):
       # TD residual δ = r + γV(s_i+1; θ) - V(s_i; θ)
       td_error = rewards[i] + args.discount * values[i + 1].data - values[i].data
       # Generalised advantage estimator Ψ (roughly of form ∑(γλ)^t∙δ)
-      A_GAE = A_GAE * args.discount * args.gae_discount + td_error
+      A_GAE = A_GAE * args.discount * args.trace_decay + td_error
       # dθ ← dθ - ∇θ∙log(π(a_i|s_i; θ))∙Ψ - β∙∇θH(π(s_i; θ))
       policy_loss -= log_probs[i] * Variable(A_GAE) - args.entropy_weight * entropies[i]
 
