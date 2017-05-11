@@ -19,7 +19,7 @@ class EpisodicReplayMemory():
       self.position = min(self.position + 1, self.num_episodes - 1)
 
   # Samples random trajectory
-  def sample(self, n):
+  def sample(self):
     while True:
       e = random.randrange(len(self.memory))
       if len(self.memory[e]) > 0:
