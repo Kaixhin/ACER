@@ -79,7 +79,7 @@ def test(rank, args, T, shared_model):
       if args.evaluate:
         return
     else:
-      if T.value() - t_start >= args.test_interval:
+      if T.value() - t_start >= args.evaluation_interval:
         can_test = True
 
     time.sleep(1)  # Check if available to test every second
