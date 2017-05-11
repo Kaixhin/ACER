@@ -1,3 +1,5 @@
+import math
+import random
 import gym
 import torch
 from torch import nn
@@ -9,6 +11,16 @@ from model import ActorCritic
 from utils import action_to_one_hot, extend_input, state_to_tensor
 
 
+# Knuth's algorithm for generating Poisson samples
+def _poisson(lmbd):
+  L, k, p = math.exp(-lmbd), 0, 1
+  while p > L:
+    k += 1
+    p *= random.uniform(0, 1)
+  return k - 1
+
+
+# Transfers gradients from thread-specific model to shared model
 def _transfer_grads_to_shared_model(model, shared_model):
   for param, shared_param in zip(model.parameters(), shared_model.parameters()):
     if shared_param.grad is not None:
@@ -36,7 +48,7 @@ def _update_networks(args, model, shared_model, loss, optimiser, on_policy=False
   optimiser.step()
   if on_policy and args.lr_decay:
     # Decay learning rate only on on-policy updates to ensure correct amount of decay
-    _decay_learning_rate(optimiser, args.T_max)
+    _decay_learning_rate(optimiser, args.T_max)  # TODO: Fix formula
 
   # TODO: Update shared_average_model
 
@@ -196,9 +208,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
       average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
 
       # Sample action
-      action = policy.multinomial().data[0, 0]
-      # Graph broken as loss for stochastic action calculated manually TODO: This isn't needed if we save the policy and action taken
-      # log_prob = policy.log().gather(1, action.detach())  # Log probability of chosen action
+      action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
 
       # Step
       next_state, reward, done, _ = env.step(action)
@@ -239,7 +249,10 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
     # Train the network on-policy
     _train_on_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, actions, rewards, Qret)
 
-    # TODO: Train the network off-policy a Poisson-sampled number of times
-    _train_off_policy(args, model, shared_model, optimiser, memory)
+    # Train the network off-policy when enough experience has been collected
+    if len(memory) >= args.replay_start:
+      # Train the network off-policy (a Poisson-sampled number of times based on the replay ratio)
+      for _ in range(_poisson(args.replay_ratio)):
+        _train_off_policy(args, model, shared_model, optimiser, memory)
 
   env.close()
