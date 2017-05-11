@@ -39,7 +39,7 @@ def test(rank, args, T, shared_model):
             cx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
             # Reset environment and done flag
             state = state_to_tensor(env.reset())
-            action, reward, done, episode_length = Variable(torch.LongTensor([0]).unsqueeze(0)), 0, False, 0
+            action, reward, done, episode_length = 0, 0, False, 0
             reward_sum = 0
 
           # Optionally render validation states
@@ -51,12 +51,10 @@ def test(rank, args, T, shared_model):
           policy, _, _, (hx, cx) = model(Variable(input, volatile=True), (hx.detach(), cx.detach()))  # Break graph for memory efficiency
 
           # Choose action greedily
-          # action = policy.max(1)[1]
-          # Sample action
-          action = policy.multinomial()
+          action = policy.max(1)[1].data[0, 0]
 
           # Step
-          state, reward, done, _ = env.step(action.data[0, 0])
+          state, reward, done, _ = env.step(action)
           state = state_to_tensor(state)
           reward_sum += reward
           done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length

@@ -24,10 +24,10 @@ def state_to_tensor(state):
   return torch.from_numpy(state).float().unsqueeze(0)
 
 
-# Converts an action index variable and action space size into a one-hot batch tensor
+# Converts an action index and action space size into a one-hot batch tensor
 def action_to_one_hot(action_index, action_size):
   action = torch.zeros(1, action_size)
-  action[0, action_index.data[0, 0]] = 1
+  action[0, action_index] = 1
   return action
 
 
