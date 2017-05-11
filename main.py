@@ -59,9 +59,9 @@ if __name__ == '__main__':
     # Load pretrained weights
     shared_model.load_state_dict(torch.load(args.model))
   # Create average network
-  average_model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
-  average_model.load_state_dict(shared_model.state_dict())
-  average_model.share_memory()
+  shared_average_model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
+  shared_average_model.load_state_dict(shared_model.state_dict())
+  shared_average_model.share_memory()
   # Create optimiser for shared network parameters with shared statistics
   optimiser = SharedRMSprop(shared_model.parameters(), lr=args.lr, alpha=args.rmsprop_decay)
   optimiser.share_memory()
@@ -76,7 +76,7 @@ if __name__ == '__main__':
   if not args.evaluate:
     # Start training agents
     for rank in range(1, args.num_processes + 1):
-      p = mp.Process(target=train, args=(rank, args, T, shared_model, average_model, optimiser))
+      p = mp.Process(target=train, args=(rank, args, T, shared_model, shared_average_model, optimiser))
       p.start()
       processes.append(p)
 
