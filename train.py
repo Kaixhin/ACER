@@ -304,14 +304,12 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
       if done:
         break
 
-    """
     # Train the network off-policy when enough experience has been collected
     if len(memory) >= args.replay_start:
       # Sample a number of off-policy episodes based on the replay ratio
       for _ in range(_poisson(args.replay_ratio)):
-        # Act and train off-policy for one episode
-        trajectory = memory.sample()
-        done, t = _act_and_train_off_policy(args, model, shared_average_model, trajectory, action_size, T, t, t_start, done)
-    """
+        # Act and train off-policy for one (truncated) episode
+        trajectory = memory.sample(maxlen=args.t_max)
+        # done, t = _act_and_train_off_policy(args, model, shared_average_model, trajectory, action_size, T, t, t_start, done)
 
   env.close()

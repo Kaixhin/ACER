@@ -19,11 +19,18 @@ class EpisodicReplayMemory():
       self.position = min(self.position + 1, self.num_episodes - 1)
 
   # Samples random trajectory
-  def sample(self):
+  def sample(self, maxlen=0):
     while True:
       e = random.randrange(len(self.memory))
-      if len(self.memory[e]) > 0:
-        return self.memory[e]
+      mem = self.memory[e]
+      T = len(mem)
+      if T > 0:
+        # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
+        if maxlen > 0 and T > maxlen:
+          t = random.randrange(T - maxlen)
+          return mem[t:t + maxlen]
+        else:
+          return mem
 
   def __len__(self):
     return len(self.memory)
