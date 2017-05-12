@@ -139,73 +139,8 @@ def _train_off_policy(args, model, shared_model, optimiser, memory):
   _update_networks(args, model, shared_model, loss, optimiser, on_policy=False)
 
 
-# Acts on-policy
-def _act_on_policy(args, env, model, memory, T, t, t_start, done):
-  action_size = env.action_space.n
-
-  # Reset or pass on hidden state
-  if done:
-    hx = Variable(torch.zeros(1, args.hidden_size))
-    cx = Variable(torch.zeros(1, args.hidden_size))
-    # Reset environment and done flag
-    state = state_to_tensor(env.reset())
-    action, reward, done, episode_length = 0, 0, False, 0
-  elif not args.no_truncate:
-    # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
-    hx = hx.detach()
-    cx = cx.detach()
-
-  # Lists of outputs for training
-  policies, Qs, Vs, actions, rewards = [], [], [], [], []
-
-  while not done and t - t_start < args.t_max:
-    # Calculate policy and values
-    input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
-    policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
-
-    # Sample action
-    action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
-
-    # Step
-    next_state, reward, done, _ = env.step(action)
-    next_state = state_to_tensor(next_state)
-    reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
-    done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
-    episode_length += 1  # Increase episode counter
-
-    # Save (beginning part of) transition for offline training
-    memory.append(input, action, reward, policy.data)  # Save just tensors
-    # Save outputs for online training
-    policies.append(policy)
-    Qs.append(Q)
-    Vs.append(V)
-    actions.append(action)
-    rewards.append(reward)
-
-    # Increment counters
-    t += 1
-    T.increment()
-
-    # Update state
-    state = next_state
-
-  # Break graph for last values calculated (used for targets, not directly as model outputs)
-  if done:
-    # Qret = 0 for terminal s
-    Qret = Variable(torch.zeros(1, 1))
-
-    # Save terminal state for offline training
-    memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
-  else:
-    # Qret = V(s_i; θ) for non-terminal s
-    _, _, Qret, _ = model(Variable(input), (hx, cx))
-    Qret = Qret.detach()
-
-  return policies, Qs, Vs, actions, rewards, Qret, done
-
-
-# Acts off-policy
-def _act_off_policy(args, env, model, shared_average_model, trajectory, action_size, T, t, t_start, done):
+# Acts and trains off-policy
+def _act_and_train_off_policy(args, env, model, shared_average_model, trajectory, action_size, T, t, t_start, done):
   action_size = env.action_space.n
 
   print(trajectory)
@@ -277,6 +212,8 @@ def _act_off_policy(args, env, model, shared_average_model, trajectory, action_s
 
   return policies, Qs, Vs, average_policies, actions, rewards, Qret, done
   """
+  # Train the network off-policy
+  _train_off_policy(args, model, shared_model, optimiser, memory)
 
 
 # Acts and trains model
@@ -295,26 +232,86 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
   done = True  # Start new episode
 
   while T.value() <= args.T_max:
-    # Sync with shared model at least every t_max steps
-    model.load_state_dict(shared_model.state_dict())
-    # Get starting timestep
-    t_start = t
+    # On-policy episode loop
+    while True:
+      # Sync with shared model at least every t_max steps
+      model.load_state_dict(shared_model.state_dict())
+      # Get starting timestep
+      t_start = t
 
-    # Act on-policy for one episode
-    policies, Qs, Vs, actions, rewards, Qret, done = _act_on_policy(args, env, model, memory, T, t, t_start, done)
-    # Train the network on-policy
-    _train_on_policy(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
+      # Reset or pass on hidden state
+      if done:
+        hx = Variable(torch.zeros(1, args.hidden_size))
+        cx = Variable(torch.zeros(1, args.hidden_size))
+        # Reset environment and done flag
+        state = state_to_tensor(env.reset())
+        action, reward, done, episode_length = 0, 0, False, 0
+      elif not args.no_truncate:
+        # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
+        hx = hx.detach()
+        cx = cx.detach()
+
+      # Lists of outputs for training
+      policies, Qs, Vs, actions, rewards = [], [], [], [], []
+
+      while not done and t - t_start < args.t_max:
+        # Calculate policy and values
+        input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
+        policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
+
+        # Sample action
+        action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
+
+        # Step
+        next_state, reward, done, _ = env.step(action)
+        next_state = state_to_tensor(next_state)
+        reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
+        done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
+        episode_length += 1  # Increase episode counter
+
+        # Save (beginning part of) transition for offline training
+        memory.append(input, action, reward, policy.data)  # Save just tensors
+        # Save outputs for online training
+        policies.append(policy)
+        Qs.append(Q)
+        Vs.append(V)
+        actions.append(action)
+        rewards.append(reward)
+
+        # Increment counters
+        t += 1
+        T.increment()
+
+        # Update state
+        state = next_state
+
+      # Break graph for last values calculated (used for targets, not directly as model outputs)
+      if done:
+        # Qret = 0 for terminal s
+        Qret = Variable(torch.zeros(1, 1))
+
+        # Save terminal state for offline training
+        memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
+      else:
+        # Qret = V(s_i; θ) for non-terminal s
+        _, _, Qret, _ = model(Variable(input), (hx, cx))
+        Qret = Qret.detach()
+
+      # Train the network on-policy
+      _train_on_policy(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
+
+      # Finish on-policy episode
+      if done:
+        break
 
     """
     # Train the network off-policy when enough experience has been collected
     if len(memory) >= args.replay_start:
       # Sample a number of off-policy episodes based on the replay ratio
       for _ in range(_poisson(args.replay_ratio)):
-        # Act off-policy for one episode
+        # Act and train off-policy for one episode
         trajectory = memory.sample()
-        policies, Qs, Vs, average_policies, actions, rewards, Qret = _act_off_policy(args, model, shared_average_model, trajectory, action_size, T, t, t_start, done)
-        # Train the network off-policy
-        _train_off_policy(args, model, shared_model, optimiser, memory)
+        done, t = _act_and_train_off_policy(args, model, shared_average_model, trajectory, action_size, T, t, t_start, done)
     """
 
   env.close()
