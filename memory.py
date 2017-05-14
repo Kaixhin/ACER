@@ -33,4 +33,4 @@ class EpisodicReplayMemory():
           return mem
 
   def __len__(self):
-    return len(self.memory)
+    return sum(len(episode) for episode in self.memory)

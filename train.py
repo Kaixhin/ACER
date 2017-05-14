@@ -56,7 +56,7 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
 
 
 # Trains model
-def _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=None, average_policies=None):
+def _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, average_policies, old_policies=None):
   off_policy = old_policies is not None
   policy_loss = 0
   value_loss = 0
@@ -73,19 +73,19 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     A = Qret - Vs[i]
     # Log policy log(π(a_i|s_i; θ))
     log_prob = policies[i][0][actions[i]].log()
+    # Single step policy loss (before trust region update)
+    pre_policy_loss = 0
     # g ← min(c, ρ_a_i)∙∇θ∙log(π(a_i|s_i; θ))∙A
-    policy_loss -= (off_policy and min(args.trace_max, rho[actions[i]]) or 1) * log_prob * A
+    pre_policy_loss -= (off_policy and min(args.trace_max, rho[actions[i]]) or 1) * log_prob * A
     # Off-policy bias correction
     if off_policy:
-      # TODO: Weight by policy? Seems missing in term...
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
-      policy_loss -= (max(1 - args.trace_max / rho, 0) * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
-      # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-      kl = policies[i] * (policies[i].log() - average_policies[i].log())
-    """
-    # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k - β∙∇θH(π(s_i; θ))
-    policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_region_threshold)
-    """
+      pre_policy_loss -= (torch.clamp(1 - args.trace_max / rho, min=0).unsqueeze(0) * policies[i] * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
+    # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
+    kl = policies[i] * (policies[i].log() - average_policies[i].log())
+    #policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_region_threshold)
+    # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k
+    policy_loss += pre_policy_loss
 
     # Entropy regularisation dθ ← dθ - β∙∇θH(π(s_i; θ))
     policy_loss += args.entropy_weight * -(policies[i].log() * policies[i]).sum(1)
@@ -132,8 +132,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
       # Reset or pass on hidden state
       if done:
-        hx = Variable(torch.zeros(1, args.hidden_size))
-        cx = Variable(torch.zeros(1, args.hidden_size))
+        hx, avg_hx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
+        cx, avg_cx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
         # Reset environment and done flag
         state = state_to_tensor(env.reset())
         action, reward, done, episode_length = 0, 0, False, 0
@@ -143,12 +143,13 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         cx = cx.detach()
 
       # Lists of outputs for training
-      policies, Qs, Vs, actions, rewards = [], [], [], [], []
+      policies, Qs, Vs, actions, rewards, average_policies = [], [], [], [], [], []
 
       while not done and t - t_start < args.t_max:
         # Calculate policy and values
         input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
         policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
+        average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
 
         # Sample action
         action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
@@ -163,7 +164,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         # Save (beginning part of) transition for offline training
         memory.append(input, action, reward, policy.data)  # Save just tensors
         # Save outputs for online training
-        [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards), (policy, Q, V, action, reward))]
+        [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, average_policies), (policy, Q, V, action, reward, average_policy))]
 
         # Increment counters
         t += 1
@@ -185,7 +186,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         Qret = Qret.detach()
 
       # Train the network on-policy
-      _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
+      _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, average_policies)
 
       # Finish on-policy episode
       if done:
@@ -218,15 +219,11 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
 
           # Save outputs for offline training
-          [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, old_policies, average_policies), (policy, Q, V, action, reward, old_policy, average_policy))]
+          [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, average_policies, old_policies), (policy, Q, V, action, reward, average_policy, old_policy))]
 
           # Unpack second half of transition
           next_input, action, _, _ = trajectory[i + 1]
           done = action is None
-
-          # TODO: Increment counters?
-          t += 1
-          T.increment()
 
         if done:
           # Qret = 0 for terminal s
@@ -237,6 +234,6 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           Qret = Qret.detach()
         
         # Train the network off-policy
-        _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=old_policies, average_policies=average_policies)
+        _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, average_policies, old_policies=old_policies)
 
   env.close()
