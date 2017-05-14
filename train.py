@@ -67,7 +67,8 @@ def _train_on_policy(args, model, shared_model, optimiser, policies, Qs, Vs, act
     
     # Policy gradient loss
     log_prob = policies[i][0][actions[i]].log()
-    policy_loss += -log_prob * A
+    policy_loss -= log_prob * A
+    # TODO: Entropy loss
 
     # Value function loss
     Q = Qs[i][0][actions[i]]
@@ -81,34 +82,40 @@ def _train_on_policy(args, model, shared_model, optimiser, policies, Qs, Vs, act
 
 
 # Trains model off-policy
-def _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, actions, rewards, Qret):
+def _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, old_policies, actions, rewards, Qret):
   policy_loss = 0
   value_loss = 0
   
   # Calculate n-step returns in forward view, stepping backwards from the last state
   for i in reversed(range(len(rewards))):  # TODO: Consider normalising loss by number of steps?
+    # Importance sampling
+    rho = policies[i][0] / Variable(old_policies[i][0])  # TODO: Account for NaNs?
+
     # Qret ← r_i + γQret
     Qret = rewards[i] + args.discount * Qret
     # Advantage A ← Qret - V(s_i; θ)
     A = Qret - Vs[i]
     
-    # Policy gradient loss
+    # Truncated policy gradient loss
     log_prob = policies[i][0][actions[i]].log()
-    policy_loss += -log_prob * A
+    # g ← min(c, ρ_i)∙∇θ∙log(π(a_i|s_i; θ))∙A ...
+    policy_loss -= min(args.trace_max, rho[actions[i]]) * log_prob * A
+    # ... + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
+    policy_loss -= (max(1 - args.trace_max / rho, 0) * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
 
     # Value function loss
     Q = Qs[i][0][actions[i]]
     value_loss += (Qret - Q) ** 2 / 2  # Least squares loss
 
-    # Qret ← Qret - Q(s_i, a_i; θ) + V(s_i; θ)
-    Qret = Qret - Q.detach() + Vs[i].detach()
+    # Truncated importance sampling
+    c = min(rho[actions[i]], 1)
+    # Qret ← c∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
+    Qret = c * (Qret - Q.detach()) + Vs[i].detach()
 
   # Update
   _update_networks(args, model, shared_model, policy_loss + value_loss, optimiser, on_policy=False)
   return
   """
-  # g ← min(c, ρ_i)∙∇θ∙log(π(a_i|s_i; θ))∙A + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ))
-  g = min(args.trace_max, 1) * log_prob * A + \
       (max(1 - args.trace_max / 1, 0) * policies[i] * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
   # k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
   k = policies[i] * (policies[i].log() - average_policies[i].log())  # TODO: Fix undefined log(0)
@@ -267,12 +274,12 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         action, reward, done, episode_length = 0, 0, False, 0
 
         # Lists of outputs for training
-        policies, Qs, Vs, average_policies, actions, rewards = [], [], [], [], [], []
+        policies, Qs, Vs, average_policies, old_policies, actions, rewards = [], [], [], [], [], [], []
 
         # Loop over trajectory (bar last timestep)
         for i in range(len(trajectory) - 1):
           # Unpack first half of transition
-          input, action, reward, _ = trajectory[i]
+          input, action, reward, old_policy = trajectory[i]
 
           # Calculate policy and values
           policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
@@ -283,6 +290,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           Qs.append(Q)
           Vs.append(V)
           average_policies.append(average_policy)
+          old_policies.append(old_policy)
           actions.append(action)
           rewards.append(reward)
 
@@ -303,6 +311,6 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           Qret = Qret.detach()
         
         # Train the network off-policy
-        _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, actions, rewards, Qret)
+        _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, old_policies, actions, rewards, Qret)
 
   env.close()
