@@ -53,43 +53,16 @@ def _update_networks(args, model, shared_model, loss, optimiser, on_policy=False
   # TODO: Update shared_average_model?
 
 
-# Trains model on-policy
-def _train_on_policy(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret):
+# Trains model
+def _train(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=None, average_policies=None):
+  off_policy = old_policies is not None
   policy_loss = 0
   value_loss = 0
   
   # Calculate n-step returns in forward view, stepping backwards from the last state
   for i in reversed(range(len(rewards))):  # TODO: Consider normalising loss by number of steps?
-    # Qret ← r_i + γQret
-    Qret = rewards[i] + args.discount * Qret
-    # Advantage A ← Qret - V(s_i; θ)
-    A = Qret - Vs[i]
-    
-    # Policy gradient loss
-    log_prob = policies[i][0][actions[i]].log()
-    policy_loss -= log_prob * A
-    # TODO: Entropy loss
-
-    # Value function loss
-    Q = Qs[i][0][actions[i]]
-    value_loss += (Qret - Q) ** 2 / 2  # Least squares loss
-
-    # Qret ← Qret - Q(s_i, a_i; θ) + V(s_i; θ)
-    Qret = Qret - Q.detach() + Vs[i].detach()
-
-  # Update
-  _update_networks(args, model, shared_model, policy_loss + value_loss, optimiser, on_policy=True)
-
-
-# Trains model off-policy
-def _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, old_policies, actions, rewards, Qret):
-  policy_loss = 0
-  value_loss = 0
-  
-  # Calculate n-step returns in forward view, stepping backwards from the last state
-  for i in reversed(range(len(rewards))):  # TODO: Consider normalising loss by number of steps?
-    # Importance sampling
-    rho = policies[i][0] / Variable(old_policies[i][0])  # TODO: Account for NaNs?
+    # Importance sampling weight
+    rho = off_policy and policies[i][0].detach() / Variable(old_policies[i][0]) or 1 # TODO: Account for NaNs?
 
     # Qret ← r_i + γQret
     Qret = rewards[i] + args.discount * Qret
@@ -98,17 +71,20 @@ def _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, av
     
     # Truncated policy gradient loss
     log_prob = policies[i][0][actions[i]].log()
-    # g ← min(c, ρ_i)∙∇θ∙log(π(a_i|s_i; θ))∙A ...
-    policy_loss -= min(args.trace_max, rho[actions[i]]) * log_prob * A
-    # ... + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
-    policy_loss -= (max(1 - args.trace_max / rho, 0) * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
+    # g ← min(c, ρ_i)∙∇θ∙log(π(a_i|s_i; θ))∙A
+    policy_loss -= (off_policy and min(args.trace_max, rho[actions[i]]) or 1) * log_prob * A
+    # Off-policy bias correction
+    if off_policy:
+      # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
+      policy_loss -= (max(1 - args.trace_max / rho, 0) * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
+    # TODO: Entropy loss
 
     # Value function loss
     Q = Qs[i][0][actions[i]]
     value_loss += (Qret - Q) ** 2 / 2  # Least squares loss
 
     # Truncated importance sampling
-    c = min(rho[actions[i]], 1)
+    c = off_policy and min(rho[actions[i]], 1) or 1
     # Qret ← c∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
     Qret = c * (Qret - Q.detach()) + Vs[i].detach()
 
@@ -251,7 +227,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         Qret = Qret.detach()
 
       # Train the network on-policy
-      _train_on_policy(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
+      _train(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
 
       # Finish on-policy episode
       if done:
@@ -311,6 +287,6 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           Qret = Qret.detach()
         
         # Train the network off-policy
-        _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, old_policies, actions, rewards, Qret)
+        _train(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=old_policies, average_policies=average_policies)
 
   env.close()
