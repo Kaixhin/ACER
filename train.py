@@ -47,7 +47,7 @@ def _update_networks(args, T, model, shared_model, loss, optimiser):
   optimiser.step()
   if args.lr_decay:
     # Linearly decay learning rate
-    _adjust_learning_rate(optimiser, max((args.T_max - T.value()) / args.T_max, 1e-32))
+    _adjust_learning_rate(optimiser, max(args.lr * (args.T_max - T.value()) / args.T_max, 1e-32))
 
   # TODO: Update shared_average_model?
 
@@ -59,7 +59,8 @@ def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, r
   value_loss = 0
   
   # Calculate n-step returns in forward view, stepping backwards from the last state
-  for i in reversed(range(len(rewards))):  # TODO: Consider normalising loss by number of steps?
+  t = len(rewards)
+  for i in reversed(range(t)):
     # Importance sampling weight
     rho = off_policy and policies[i][0].detach() / Variable(old_policies[i][0]) or 1 # TODO: Account for NaNs?
 
@@ -88,8 +89,10 @@ def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, r
     Qret = c * (Qret - Q.detach()) + Vs[i].detach()
 
   # Update
+  if not args.no_time_normalisation:
+    policy_loss /= t
+    value_loss /= t
   _update_networks(args, T, model, shared_model, policy_loss + value_loss, optimiser)
-  return
   """
       (max(1 - args.trace_max / 1, 0) * policies[i] * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
   # k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
@@ -141,7 +144,6 @@ def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, r
   entropy = -(log_policy * policy).sum(1)
   policy_loss += -log_probs[i] * Variable(A_GAE) + args.entropy_weight * entropy
   """
-  _update_networks(args, model, shared_model, loss, optimiser, on_policy=False)
 
 
 # Acts and trains model
@@ -240,10 +242,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         trajectory = memory.sample(maxlen=args.t_max)
 
         # Reset hidden state
-        hx = Variable(torch.zeros(1, args.hidden_size))
-        cx = Variable(torch.zeros(1, args.hidden_size))
-        avg_hx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
-        avg_cx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
+        hx, avg_hx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
+        cx, avg_cx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
         # Reset environment and done flag
         state = state_to_tensor(env.reset())
         action, reward, done, episode_length = 0, 0, False, 0
