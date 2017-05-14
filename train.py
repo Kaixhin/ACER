@@ -36,8 +36,9 @@ def _adjust_learning_rate(optimiser, lr):
 
 # Updates networks
 def _update_networks(args, T, model, shared_model, loss, optimiser):
-  optimiser.zero_grad()  # Zero shared and local grads
-  # Note that losses were defined as negatives of normal update rules for gradient descent
+  # Zero shared and local grads
+  optimiser.zero_grad()
+  # Calculate gradients (not losses defined as negatives of normal update rules for gradient descent)
   loss.backward()
   # Gradient (L2) norm clipping
   nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
@@ -61,89 +62,47 @@ def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, r
   # Calculate n-step returns in forward view, stepping backwards from the last state
   t = len(rewards)
   for i in reversed(range(t)):
-    # Importance sampling weight
-    rho = off_policy and policies[i][0].detach() / Variable(old_policies[i][0]) or 1 # TODO: Account for NaNs?
+    # Importance sampling weights ρ ← π(∙|s_i) / µ(∙|s_i)
+    rho = off_policy and policies[i][0].detach() / Variable(old_policies[i][0]) or 1
 
     # Qret ← r_i + γQret
     Qret = rewards[i] + args.discount * Qret
     # Advantage A ← Qret - V(s_i; θ)
     A = Qret - Vs[i]
-    
-    # Truncated policy gradient loss
+    # Log policy log(π(a_i|s_i; θ))
     log_prob = policies[i][0][actions[i]].log()
-    # g ← min(c, ρ_i)∙∇θ∙log(π(a_i|s_i; θ))∙A
+    # g ← min(c, ρ_a_i)∙∇θ∙log(π(a_i|s_i; θ))∙A
     policy_loss -= (off_policy and min(args.trace_max, rho[actions[i]]) or 1) * log_prob * A
     # Off-policy bias correction
     if off_policy:
+      # TODO: Weight by policy? Seems missing in term...
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
       policy_loss -= (max(1 - args.trace_max / rho, 0) * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
-    # TODO: Entropy loss
+    # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
+    kl = policies[i] * (policies[i].log() - average_policies[i].log())
+    """
+    # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k - β∙∇θH(π(s_i; θ))
+    policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_region_threshold)
+    """
 
-    # Value function loss
+    # Entropy regularisation dθ ← dθ - β∙∇θH(π(s_i; θ))
+    policy_loss += args.entropy_weight * -(policies[i].log() * policies[i]).sum(1)
+
+    # Value update dθ ← dθ - ∇θ∙A^2
     Q = Qs[i][0][actions[i]]
     value_loss += (Qret - Q) ** 2 / 2  # Least squares loss
 
-    # Truncated importance sampling
-    c = off_policy and min(rho[actions[i]], 1) or 1
-    # Qret ← c∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
-    Qret = c * (Qret - Q.detach()) + Vs[i].detach()
+    # Truncated importance weight ρ¯_a_i = min(1, ρ_a_i)
+    truncated_rho = off_policy and min(1, rho[actions[i]]) or 1
+    # Update Retrace target Qret ← ρ¯_a_i∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
+    Qret = truncated_rho * (Qret - Q.detach()) + Vs[i].detach()
 
-  # Update
+  # Optionally normalise loss by number of time steps
   if not args.no_time_normalisation:
     policy_loss /= t
     value_loss /= t
+  # Update
   _update_networks(args, T, model, shared_model, policy_loss + value_loss, optimiser)
-  """
-      (max(1 - args.trace_max / 1, 0) * policies[i] * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
-  # k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-  k = policies[i] * (policies[i].log() - average_policies[i].log())  # TODO: Fix undefined log(0)
-  """
-  
-  """
-  # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k - β∙∇θH(π(s_i; θ))
-  print(g)
-  print(k)
-  print(torch.mm(k.t(), g))
-  policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_region_threshold)
-  # + args.entropy_weight * entropies[i]     
-  quit()
-  """
-  # dθ ← dθ - ∂A^2/∂θ
-  # value_loss += 0.5 * A ** 2  # Least squares error
-  """
-  if len(log_probs) > i + 1:
-    # Importance weight ρ_i+1 = π(a_i+1|s_i+1) / µ(a_i+1|s_i+1)
-    hx = Variable(torch.zeros(1, args.hidden_size))
-    cx = Variable(torch.zeros(1, args.hidden_size))
-    pi, _, _, = model(input, (hx, cx))
-    pi_a = pi.data.gather(1, actions[i + 1])  # TODO: Ideally need to push model forwards through old states?
-    mu_a = log_probs[i + 1].data.exp()  # Data from "old" policy
-    importance_weight = pi_a / mu_a
-    # Off-policy correction Qret(s_i+1, a_i+1) - Q(s_i+1, a_i+1)
-    Qdiff = Qrets[i + 1] - Qs[i + 1].data
-  else:
-    # Handle terminal case
-    importance_weight = torch.FloatTensor([args.importance_weight_truncation])
-    Qdiff = torch.zeros(1, 1)  # TODO: Assume no off-policy correction on terminal s?
-    Qrets[i + 1] = torch.zeros(1, 1)  # TODO: Q on terminal s is 0, correct?
-
-  # ρ¯_i+1 = min(c, ρ_i+1)
-  truncated_importance_weight = torch.clamp(importance_weight, min=args.max_trace)
-  # Qret(s_i, a_i) = r_i + γρ¯_i+1[Qret(s_i+1, s_t+1) − Q(s_t+1, s_t+1)] + γV(s_t+1)
-  Qrets[i] = rewards[i] + args.discount * truncated_importance_weight * \
-      Qdiff + args.discount * Vs[i + 1].data
-  # dθ ← dθ - (Qret(s_i, a_i) - Q(s_i, a_i))∇θ∙Q(s_i, a_i)
-  value_loss += (Variable(Qrets[i]) - Qs[i]).mean()  # TODO: Should operate only a of Q?
-  """
-  """
-  # TD residual δ = r_i + γV(s_i+1; θ) - V(s_i; θ)
-  td_error = rewards[i] + args.discount * Vs[i + 1].data - Vs[i].data
-  # Generalised advantage estimator Ψ (roughly of form ∑(γλ)^t∙δ)
-  A_GAE = A_GAE * args.discount * args.trace_decay + td_error
-  # dθ ← dθ + ∇θ∙log(π(a_i|s_i; θ))∙Ψ - β∙∇θH(π(s_i; θ))
-  entropy = -(log_policy * policy).sum(1)
-  policy_loss += -log_probs[i] * Variable(A_GAE) + args.entropy_weight * entropy
-  """
 
 
 # Acts and trains model
@@ -202,11 +161,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         # Save (beginning part of) transition for offline training
         memory.append(input, action, reward, policy.data)  # Save just tensors
         # Save outputs for online training
-        policies.append(policy)
-        Qs.append(Q)
-        Vs.append(V)
-        actions.append(action)
-        rewards.append(reward)
+        [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards), (policy, Q, V, action, reward))]
 
         # Increment counters
         t += 1
@@ -261,13 +216,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
 
           # Save outputs for offline training
-          policies.append(policy)
-          Qs.append(Q)
-          Vs.append(V)
-          old_policies.append(old_policy)
-          average_policies.append(average_policy)
-          actions.append(action)
-          rewards.append(reward)
+          [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, old_policies, average_policies), (policy, Q, V, action, reward, old_policy, average_policy))]
 
           # Unpack second half of transition
           next_input, action, _, _ = trajectory[i + 1]
