@@ -28,33 +28,32 @@ def _transfer_grads_to_shared_model(model, shared_model):
     shared_param._grad = param.grad
 
 
-# Linearly decays learning rate
-def _decay_learning_rate(optimiser, steps):
-  eps = 1e-32
+# Adjusts learning rate
+def _adjust_learning_rate(optimiser, lr):
   for param_group in optimiser.param_groups:
-    param_group['lr'] = max(param_group['lr'] - param_group['lr'] / steps, eps)
+    param_group['lr'] = lr
 
 
 # Updates networks
-def _update_networks(args, model, shared_model, loss, optimiser, on_policy=False):
-  optimiser.zero_grad()  # TODO: Zero local grads too surely? When transferring, aren't shared lost anyway?
+def _update_networks(args, T, model, shared_model, loss, optimiser):
+  optimiser.zero_grad()  # Zero shared and local grads
   # Note that losses were defined as negatives of normal update rules for gradient descent
-  loss.backward(retain_variables=on_policy and args.no_truncate)
+  loss.backward()
   # Gradient (L2) norm clipping
   nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
 
   # Transfer gradients to shared model and update
   _transfer_grads_to_shared_model(model, shared_model)
   optimiser.step()
-  if on_policy and args.lr_decay:
-    # Decay learning rate only on on-policy updates to ensure correct amount of decay
-    _decay_learning_rate(optimiser, args.T_max)  # TODO: Fix formula
+  if args.lr_decay:
+    # Linearly decay learning rate
+    _adjust_learning_rate(optimiser, max((args.T_max - T.value()) / args.T_max, 1e-32))
 
   # TODO: Update shared_average_model?
 
 
 # Trains model
-def _train(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=None, average_policies=None):
+def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=None, average_policies=None):
   off_policy = old_policies is not None
   policy_loss = 0
   value_loss = 0
@@ -89,7 +88,7 @@ def _train(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewa
     Qret = c * (Qret - Q.detach()) + Vs[i].detach()
 
   # Update
-  _update_networks(args, model, shared_model, policy_loss + value_loss, optimiser, on_policy=False)
+  _update_networks(args, T, model, shared_model, policy_loss + value_loss, optimiser)
   return
   """
       (max(1 - args.trace_max / 1, 0) * policies[i] * policies[i].log() * (Qs[i] - Vs[i].expand_as(Qs[i]))).sum(1)
@@ -175,7 +174,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         # Reset environment and done flag
         state = state_to_tensor(env.reset())
         action, reward, done, episode_length = 0, 0, False, 0
-      elif not args.no_truncate:
+      else:
         # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
         hx = hx.detach()
         cx = cx.detach()
@@ -227,7 +226,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         Qret = Qret.detach()
 
       # Train the network on-policy
-      _train(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
+      _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
 
       # Finish on-policy episode
       if done:
@@ -250,7 +249,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         action, reward, done, episode_length = 0, 0, False, 0
 
         # Lists of outputs for training
-        policies, Qs, Vs, average_policies, old_policies, actions, rewards = [], [], [], [], [], [], []
+        policies, Qs, Vs, actions, rewards, old_policies, average_policies = [], [], [], [], [], [], []
 
         # Loop over trajectory (bar last timestep)
         for i in range(len(trajectory) - 1):
@@ -265,8 +264,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           policies.append(policy)
           Qs.append(Q)
           Vs.append(V)
-          average_policies.append(average_policy)
           old_policies.append(old_policy)
+          average_policies.append(average_policy)
           actions.append(action)
           rewards.append(reward)
 
@@ -275,8 +274,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           done = action is None
 
           # TODO: Increment counters?
-          # t += 1
-          # T.increment()
+          t += 1
+          T.increment()
 
         if done:
           # Qret = 0 for terminal s
@@ -287,6 +286,6 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           Qret = Qret.detach()
         
         # Train the network off-policy
-        _train(args, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=old_policies, average_policies=average_policies)
+        _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=old_policies, average_policies=average_policies)
 
   env.close()
