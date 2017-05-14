@@ -237,7 +237,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         Qret = Variable(torch.zeros(1, 1))
 
         # Save terminal state for offline training
-        memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, 0, None)
+        memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
       else:
         # Qret = V(s_i; θ) for non-terminal s
         _, _, Qret, _ = model(Variable(input), (hx, cx))
@@ -278,10 +278,6 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
           average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
 
-          # Unpack second half of transition
-          next_input, action, reward, _ = trajectory[i + 1]
-          done = action is None
-
           # Save outputs for offline training
           policies.append(policy)
           Qs.append(Q)
@@ -289,6 +285,10 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           average_policies.append(average_policy)
           actions.append(action)
           rewards.append(reward)
+
+          # Unpack second half of transition
+          next_input, action, _, _ = trajectory[i + 1]
+          done = action is None
 
           # TODO: Increment counters?
           # t += 1
@@ -301,7 +301,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           # Qret = V(s_i; θ) for non-terminal s
           _, _, Qret, _ = model(Variable(next_input), (hx, cx))
           Qret = Qret.detach()
-
+        
         # Train the network off-policy
         _train_off_policy(args, model, shared_model, optimiser, policies, Qs, Vs, average_policies, actions, rewards, Qret)
 
