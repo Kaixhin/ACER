@@ -25,7 +25,7 @@ parser.add_argument('--model', type=str, metavar='PARAMS', help='Pretrained mode
 parser.add_argument('--memory-capacity', type=int, default=100000, metavar='CAPACITY', help='Experience replay memory capacity')
 parser.add_argument('--replay-ratio', type=int, default=4, metavar='r', help='Ratio of off-policy to on-policy updates')
 # TODO: Find a good value for replay-start
-parser.add_argument('--replay-start', type=int, default=1000, metavar='EPISODES', help='Number of transitions to save before starting off-policy training')
+parser.add_argument('--replay-start', type=int, default=10000, metavar='EPISODES', help='Number of transitions to save before starting off-policy training')
 parser.add_argument('--discount', type=float, default=0.99, metavar='γ', help='Discount factor')
 parser.add_argument('--trace-decay', type=float, default=1, metavar='λ', help='Eligibility trace decay factor')
 parser.add_argument('--trace-max', type=float, default=10, metavar='c', help='Importance weight truncation (max) value')

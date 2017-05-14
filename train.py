@@ -55,6 +55,36 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
     shared_average_param = args.trust_region_decay * shared_average_param  + (1 - args.trust_region_decay) * shared_param
 
 
+# Computes a trust region loss based on an existing loss and two distributions
+def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, threshold):
+  # Compute gradients from original loss
+  loss.backward(retain_variables=True)
+  g = [param.grad.clone() for param in model.parameters()]
+  model.zero_grad()
+
+  # Remove volatile flag to allow gradient computation
+  ref_distribution.volatile = False
+  # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
+  kl = distribution * (distribution.log() - ref_distribution.log())
+  # Compute gradients from (negative) KL loss (increases KL divergence)
+  (-kl.mean(1)).backward(retain_variables=True)
+  k = [param.grad.clone() for param in model.parameters()]
+  model.zero_grad()
+
+  # Compute dot products of gradients
+  k_dot_g = sum(torch.sum(k_p * g_p) for k_p, g_p in zip(k, g))
+  k_dot_k = sum(torch.sum(k_p ** 2) for k_p in k)
+  # Compute trust region update
+  trust_factor = k_dot_k.data[0] > 0 and (k_dot_g - threshold) / k_dot_k or Variable(torch.zeros(1))
+  trust_update = [g_p - trust_factor.expand_as(k_p) * k_p for g_p, k_p in zip(g, k)]
+  trust_loss = 0
+  for param, trust_update_p in zip(model.parameters(), trust_update):
+    trust_loss += (param * trust_update_p).sum()
+  # Remove volatile flag to allow gradient computation
+  trust_loss.volatile = False
+  return trust_loss
+
+
 # Trains model
 def _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, average_policies, old_policies=None):
   off_policy = old_policies is not None
@@ -81,11 +111,9 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     if off_policy:
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
       pre_policy_loss -= (torch.clamp(1 - args.trace_max / rho, min=0).unsqueeze(0) * policies[i] * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
-    # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-    kl = policies[i] * (policies[i].log() - average_policies[i].log())
-    #policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_region_threshold)
     # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k
-    policy_loss += pre_policy_loss
+    # policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], pre_policy_loss, args.trust_region_threshold)
+    policy_loss += pre_policy_loss  # TODO: Fix trust region loss
 
     # Entropy regularisation dθ ← dθ - β∙∇θH(π(s_i; θ))
     policy_loss += args.entropy_weight * -(policies[i].log() * policies[i]).sum(1)
