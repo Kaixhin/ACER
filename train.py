@@ -35,7 +35,7 @@ def _adjust_learning_rate(optimiser, lr):
 
 
 # Updates networks
-def _update_networks(args, T, model, shared_model, loss, optimiser):
+def _update_networks(args, T, model, shared_model, shared_average_model, loss, optimiser):
   # Zero shared and local grads
   optimiser.zero_grad()
   # Calculate gradients (not losses defined as negatives of normal update rules for gradient descent)
@@ -50,11 +50,13 @@ def _update_networks(args, T, model, shared_model, loss, optimiser):
     # Linearly decay learning rate
     _adjust_learning_rate(optimiser, max(args.lr * (args.T_max - T.value()) / args.T_max, 1e-32))
 
-  # TODO: Update shared_average_model?
+  # Update shared_average_model
+  for shared_param, shared_average_param in zip(shared_model.parameters(), shared_average_model.parameters()):
+    shared_average_param = args.trust_region_decay * shared_average_param  + (1 - args.trust_region_decay) * shared_param
 
 
 # Trains model
-def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=None, average_policies=None):
+def _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=None, average_policies=None):
   off_policy = old_policies is not None
   policy_loss = 0
   value_loss = 0
@@ -78,8 +80,8 @@ def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, r
       # TODO: Weight by policy? Seems missing in term...
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
       policy_loss -= (max(1 - args.trace_max / rho, 0) * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
-    # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-    kl = policies[i] * (policies[i].log() - average_policies[i].log())
+      # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
+      kl = policies[i] * (policies[i].log() - average_policies[i].log())
     """
     # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k - β∙∇θH(π(s_i; θ))
     policy_loss += g - max(0, torch.mm(k.t(), g) - args.trust_region_threshold)
@@ -102,7 +104,7 @@ def _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, r
     policy_loss /= t
     value_loss /= t
   # Update
-  _update_networks(args, T, model, shared_model, policy_loss + value_loss, optimiser)
+  _update_networks(args, T, model, shared_model, shared_average_model, policy_loss + value_loss, optimiser)
 
 
 # Acts and trains model
@@ -183,7 +185,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         Qret = Qret.detach()
 
       # Train the network on-policy
-      _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
+      _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret)
 
       # Finish on-policy episode
       if done:
@@ -235,6 +237,6 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           Qret = Qret.detach()
         
         # Train the network off-policy
-        _train(args, T, model, shared_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=old_policies, average_policies=average_policies)
+        _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, old_policies=old_policies, average_policies=average_policies)
 
   env.close()
