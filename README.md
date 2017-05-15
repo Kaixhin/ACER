@@ -6,6 +6,8 @@ Actor-critic with experience replay (ACER) [[1]](#references). The agent also re
 
 Run with `./run.sh <options>`. When running `main.py` directly, set `OMP_NUM_THREADS=1` to prevent multiple OpenMP threads being run (and clashing) in each process.
 
+**TODO:** [UNREAL](https://arxiv.org/abs/1611.05397) + [Reactor](https://arxiv.org/abs/1704.04651)
+
 Requirements
 ------------
 
