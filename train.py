@@ -10,9 +10,7 @@ from memory import EpisodicReplayMemory
 from model import ActorCritic
 from utils import action_to_one_hot, extend_input, state_to_tensor
 
-
-# TODO: Temporary holder for trust region updates prior to double backprop support
-trust_updates = []
+trust_updates = []  # TODO: Temporary holder for trust region updates prior to double backprop support
 
 
 # Knuth's algorithm for generating Poisson samples
@@ -66,16 +64,14 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
 # Computes a trust region loss based on an existing loss and two distributions
 def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, threshold):
   # Compute gradients from original loss
-  loss.backward(retain_variables=True)
+  loss.backward(retain_variables=True)  # TODO: Replace with create_graph=True for double backprop
   g = [param.grad.clone() for param in model.parameters()]
   model.zero_grad()
 
-  # Remove volatile flag to allow gradient computation
-  ref_distribution.volatile = False
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-  kl = distribution * (distribution.log() - ref_distribution.log())
+  kl = (distribution * (distribution.log() - ref_distribution.log())).mean(1)
   # Compute gradients from (negative) KL loss (increases KL divergence)
-  (-kl.mean(1)).backward(retain_variables=True)
+  (-kl).backward(retain_variables=True)  # TODO: Replace with create_graph=True for double backprop
   k = [param.grad.clone() for param in model.parameters()]
   model.zero_grad()
 
@@ -91,8 +87,6 @@ def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, t
   """
   for param, trust_update_p in zip(model.parameters(), trust_update):
     trust_loss += (param * trust_update_p).sum()
-  # Remove volatile flag to allow gradient computation
-  trust_loss.volatile = False
   """
   return trust_loss
 
@@ -147,9 +141,7 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     policy_loss /= t
     value_loss /= t
     # TODO: Temporary workaround for lack of double backprop
-    for update in trust_updates:
-      for u_p in update:
-        u_p /= t
+    ((u_p.div_(t) for u_p in update) for update in trust_updates)
   # Update
   _update_networks(args, T, model, shared_model, shared_average_model, policy_loss + value_loss, optimiser)
 
@@ -179,8 +171,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
       # Reset or pass on hidden state
       if done:
-        hx, avg_hx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
-        cx, avg_cx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
+        hx, avg_hx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size))
+        cx, avg_cx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size))
         # Reset environment and done flag
         state = state_to_tensor(env.reset())
         action, reward, done, episode_length = 0, 0, False, 0
@@ -196,7 +188,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         # Calculate policy and values
         input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
         policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
-        average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
+        average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input), (avg_hx, avg_cx))
 
         # Sample action
         action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
@@ -247,8 +239,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         trajectory = memory.sample(maxlen=args.t_max)
 
         # Reset hidden state
-        hx, avg_hx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
-        cx, avg_cx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size), volatile=True)
+        hx, avg_hx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size))
+        cx, avg_cx = Variable(torch.zeros(1, args.hidden_size)), Variable(torch.zeros(1, args.hidden_size))
         # Reset environment and done flag
         state = state_to_tensor(env.reset())
         action, reward, done, episode_length = 0, 0, False, 0
@@ -263,7 +255,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
           # Calculate policy and values
           policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
-          average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input, volatile=True), (avg_hx, avg_cx))
+          average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input), (avg_hx, avg_cx))
 
           # Save outputs for offline training
           [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, average_policies, old_policies), (policy, Q, V, action, reward, average_policy, old_policy))]

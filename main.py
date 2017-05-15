@@ -64,6 +64,8 @@ if __name__ == '__main__':
   shared_average_model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   shared_average_model.load_state_dict(shared_model.state_dict())
   shared_average_model.share_memory()
+  for param in shared_average_model.parameters():
+    param.requires_grad = False
   # Create optimiser for shared network parameters with shared statistics
   optimiser = SharedRMSprop(shared_model.parameters(), lr=args.lr, alpha=args.rmsprop_decay)
   optimiser.share_memory()
