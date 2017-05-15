@@ -117,12 +117,12 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     if off_policy:
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
       pre_policy_loss -= (torch.clamp(1 - args.trace_max / rho, min=0).unsqueeze(0) * policies[i] * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
-    if args.no_trust_region:
-      # dθ ← dθ + ∂θ/∂θ∙g
-      policy_loss += pre_policy_loss
-    else:
+    if args.trust_region:
       # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k)
       policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], pre_policy_loss, args.trust_region_threshold)
+    else:
+      # dθ ← dθ + ∂θ/∂θ∙g
+      policy_loss += pre_policy_loss
 
     # Entropy regularisation dθ ← dθ - β∙∇θH(π(s_i; θ))
     policy_loss += args.entropy_weight * -(policies[i].log() * policies[i]).sum(1)

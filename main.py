@@ -28,7 +28,7 @@ parser.add_argument('--replay-start', type=int, default=10000, metavar='EPISODES
 parser.add_argument('--discount', type=float, default=0.99, metavar='γ', help='Discount factor')
 parser.add_argument('--trace-decay', type=float, default=1, metavar='λ', help='Eligibility trace decay factor')
 parser.add_argument('--trace-max', type=float, default=10, metavar='c', help='Importance weight truncation (max) value')
-parser.add_argument('--no-trust-region', action='store_true', help='Disable trust region')
+parser.add_argument('--trust-region', action='store_true', help='Use trust region')
 parser.add_argument('--trust-region-decay', type=float, default=0.99, metavar='α', help='Average model weight decay rate')
 parser.add_argument('--trust-region-threshold', type=float, default=1, metavar='δ', help='Trust region threshold value')
 parser.add_argument('--reward-clip', action='store_true', help='Clip rewards to [-1, 1]')
