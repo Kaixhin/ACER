@@ -11,6 +11,10 @@ from model import ActorCritic
 from utils import action_to_one_hot, extend_input, state_to_tensor
 
 
+# TODO: Temporary holder for trust region updates prior to double backprop support
+trust_updates = []
+
+
 # Knuth's algorithm for generating Poisson samples
 def _poisson(lmbd):
   L, k, p = math.exp(-lmbd), 0, 1
@@ -40,6 +44,10 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
   optimiser.zero_grad()
   # Calculate gradients (not losses defined as negatives of normal update rules for gradient descent)
   loss.backward()
+  # TODO: Temporary retrieval of trust region updates
+  for update in trust_updates:
+    for param, u_p in zip(model.parameters(), update):
+      param.grad.add_(u_p)
   # Gradient (L2) norm clipping
   nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
 
@@ -78,10 +86,14 @@ def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, t
   trust_factor = k_dot_k.data[0] > 0 and (k_dot_g - threshold) / k_dot_k or Variable(torch.zeros(1))
   trust_update = [g_p - trust_factor.expand_as(k_p) * k_p for g_p, k_p in zip(g, k)]
   trust_loss = 0
+  # TODO: Temporary workaround for lack of double backprop support
+  trust_updates.append(trust_update)
+  """
   for param, trust_update_p in zip(model.parameters(), trust_update):
     trust_loss += (param * trust_update_p).sum()
   # Remove volatile flag to allow gradient computation
   trust_loss.volatile = False
+  """
   return trust_loss
 
 
@@ -111,9 +123,12 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     if off_policy:
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
       pre_policy_loss -= (torch.clamp(1 - args.trace_max / rho, min=0).unsqueeze(0) * policies[i] * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
-    # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k
-    # policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], pre_policy_loss, args.trust_region_threshold)
-    policy_loss += pre_policy_loss  # TODO: Fix trust region loss
+    if args.no_trust_region:
+      # dθ ← dθ + ∂θ/∂θ∙g
+      policy_loss += pre_policy_loss
+    else:
+      # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k)
+      policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], pre_policy_loss, args.trust_region_threshold)
 
     # Entropy regularisation dθ ← dθ - β∙∇θH(π(s_i; θ))
     policy_loss += args.entropy_weight * -(policies[i].log() * policies[i]).sum(1)
@@ -131,6 +146,10 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
   if not args.no_time_normalisation:
     policy_loss /= t
     value_loss /= t
+    # TODO: Temporary workaround for lack of double backprop
+    for update in trust_updates:
+      for u_p in update:
+        u_p /= t
   # Update
   _update_networks(args, T, model, shared_model, shared_average_model, policy_loss + value_loss, optimiser)
 
