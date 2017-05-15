@@ -37,7 +37,7 @@ parser.add_argument('--lr-decay', action='store_true', help='Linearly decay lear
 parser.add_argument('--rmsprop-decay', type=float, default=0.99, metavar='α', help='RMSprop decay factor')
 parser.add_argument('--entropy-weight', type=float, default=0.001, metavar='β', help='Entropy regularisation weight')
 parser.add_argument('--no-time-normalisation', action='store_true', help='Do not normalise loss by number of time steps')
-parser.add_argument('--max-gradient-norm', type=float, default=10, metavar='VALUE', help='Max value of gradient norm for gradient clipping')
+parser.add_argument('--max-gradient-norm', type=float, default=10, metavar='VALUE', help='Max value of gradient L1 norm for gradient clipping')
 parser.add_argument('--evaluate', action='store_true', help='Evaluate only')
 parser.add_argument('--evaluation-interval', type=int, default=50000, metavar='STEPS', help='Number of training steps between evaluations (roughly)')
 parser.add_argument('--evaluation-episodes', type=int, default=10, metavar='N', help='Number of evaluation episodes to average over')

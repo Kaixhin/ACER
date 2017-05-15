@@ -10,8 +10,6 @@ from memory import EpisodicReplayMemory
 from model import ActorCritic
 from utils import action_to_one_hot, extend_input, state_to_tensor
 
-trust_updates = []  # TODO: Temporary holder for trust region updates prior to double backprop support
-
 
 # Knuth's algorithm for generating Poisson samples
 def _poisson(lmbd):
@@ -42,12 +40,8 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
   optimiser.zero_grad()
   # Calculate gradients (not losses defined as negatives of normal update rules for gradient descent)
   loss.backward()
-  # TODO: Temporary retrieval of trust region updates
-  for update in trust_updates:
-    for param, u_p in zip(model.parameters(), update):
-      param.grad.add_(u_p)
-  # Gradient (L2) norm clipping
-  nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
+  # Gradient (L1) norm clipping
+  nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm, 1)
 
   # Transfer gradients to shared model and update
   _transfer_grads_to_shared_model(model, shared_model)
@@ -64,14 +58,14 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
 # Computes a trust region loss based on an existing loss and two distributions
 def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, threshold):
   # Compute gradients from original loss
-  loss.backward(retain_variables=True)  # TODO: Replace with create_graph=True for double backprop
+  loss.backward(create_graph=True)
   g = [param.grad.clone() for param in model.parameters()]
   model.zero_grad()
 
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
   kl = (distribution * (distribution.log() - ref_distribution.log())).mean(1)
   # Compute gradients from (negative) KL loss (increases KL divergence)
-  (-kl).backward(retain_variables=True)  # TODO: Replace with create_graph=True for double backprop
+  (-kl).backward(create_graph=True)
   k = [param.grad.clone() for param in model.parameters()]
   model.zero_grad()
 
@@ -82,20 +76,15 @@ def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, t
   trust_factor = k_dot_k.data[0] > 0 and (k_dot_g - threshold) / k_dot_k or Variable(torch.zeros(1))
   trust_update = [g_p - trust_factor.expand_as(k_p) * k_p for g_p, k_p in zip(g, k)]
   trust_loss = 0
-  # TODO: Temporary workaround for lack of double backprop support
-  trust_updates.append(trust_update)
-  """
   for param, trust_update_p in zip(model.parameters(), trust_update):
     trust_loss += (param * trust_update_p).sum()
-  """
   return trust_loss
 
 
 # Trains model
 def _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, average_policies, old_policies=None):
   off_policy = old_policies is not None
-  policy_loss = 0
-  value_loss = 0
+  policy_loss, value_loss = 0, 0
   
   # Calculate n-step returns in forward view, stepping backwards from the last state
   t = len(rewards)
@@ -107,42 +96,39 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     Qret = rewards[i] + args.discount * Qret
     # Advantage A ← Qret - V(s_i; θ)
     A = Qret - Vs[i]
+
     # Log policy log(π(a_i|s_i; θ))
     log_prob = policies[i][0][actions[i]].log()
-    # Single step policy loss (before trust region update)
-    pre_policy_loss = 0
     # g ← min(c, ρ_a_i)∙∇θ∙log(π(a_i|s_i; θ))∙A
-    pre_policy_loss -= (off_policy and min(args.trace_max, rho[actions[i]]) or 1) * log_prob * A
+    single_step_policy_loss = -(off_policy and min(args.trace_max, rho[actions[i]]) or 1) * log_prob * A
     # Off-policy bias correction
     if off_policy:
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
-      pre_policy_loss -= (torch.clamp(1 - args.trace_max / rho, min=0).unsqueeze(0) * policies[i] * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
+      single_step_policy_loss -= ((1 - args.trace_max / rho).clamp(min=0).unsqueeze(0) * policies[i] * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
     if args.trust_region:
-      # dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k)
-      policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], pre_policy_loss, args.trust_region_threshold)
+      # Policy update dθ ← dθ + ∂θ/∂θ(g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k)
+      policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], single_step_policy_loss, args.trust_region_threshold)
     else:
-      # dθ ← dθ + ∂θ/∂θ∙g
-      policy_loss += pre_policy_loss
+      # Policy update dθ ← dθ + ∂θ/∂θ∙g
+      policy_loss += single_step_policy_loss
 
     # Entropy regularisation dθ ← dθ - β∙∇θH(π(s_i; θ))
     policy_loss += args.entropy_weight * -(policies[i].log() * policies[i]).sum(1)
 
-    # Value update dθ ← dθ - ∇θ∙A^2
+    # Value update dθ ← dθ - ∇θ∙1/2∙(Qret - Q(s_i, a_i; θ))^2
     Q = Qs[i][0][actions[i]]
     value_loss += (Qret - Q) ** 2 / 2  # Least squares loss
 
     # Truncated importance weight ρ¯_a_i = min(1, ρ_a_i)
     truncated_rho = off_policy and min(1, rho[actions[i]]) or 1
-    # Update Retrace target Qret ← ρ¯_a_i∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
+    # Qret ← ρ¯_a_i∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
     Qret = truncated_rho * (Qret - Q.detach()) + Vs[i].detach()
 
   # Optionally normalise loss by number of time steps
   if not args.no_time_normalisation:
     policy_loss /= t
     value_loss /= t
-    # TODO: Temporary workaround for lack of double backprop
-    ((u_p.div_(t) for u_p in update) for update in trust_updates)
-  # Update
+  # Update networks
   _update_networks(args, T, model, shared_model, shared_average_model, policy_loss + value_loss, optimiser)
 
 
