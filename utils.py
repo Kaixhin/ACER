@@ -2,7 +2,6 @@ import plotly
 from plotly.graph_objs import Scatter, Line
 import torch
 from torch import multiprocessing as mp
-from torch.autograd import Variable
 
 
 # Global counter
@@ -25,18 +24,18 @@ def state_to_tensor(state):
   return torch.from_numpy(state).float().unsqueeze(0)
 
 
-# Converts an index and size into a one-hot batch tensor
+# Converts an action index and action space size into a one-hot batch tensor
 def action_to_one_hot(action_index, action_size):
   action = torch.zeros(1, action_size)
-  action[0, action_index.data[0, 0]] = 1
+  action[0, action_index] = 1
   return action
 
 
 # Creates an extended input (state + previous action + reward + timestep)
-def extend_input(state, action, reward, timestep, volatile=False):
+def extend_input(state, action, reward, timestep):
   reward = torch.Tensor([reward]).unsqueeze(0)
   timestep = torch.Tensor([timestep]).unsqueeze(0)
-  return Variable(torch.cat((state, action, reward, timestep), 1), volatile=volatile)
+  return torch.cat((state, action, reward, timestep), 1)
 
 
 # Plots mean and standard deviation bars of a population over time
