@@ -3,7 +3,6 @@ import random
 import gym
 import torch
 from torch import nn
-from torch.nn import functional as F
 from torch.autograd import Variable
 
 from memory import EpisodicReplayMemory
@@ -52,21 +51,22 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
 
   # Update shared_average_model
   for shared_param, shared_average_param in zip(shared_model.parameters(), shared_average_model.parameters()):
-    shared_average_param = args.trust_region_decay * shared_average_param  + (1 - args.trust_region_decay) * shared_param
+    shared_average_param = args.trust_region_decay * shared_average_param + (1 - args.trust_region_decay) * shared_param
 
 
 # Computes a trust region loss based on an existing loss and two distributions
 def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, threshold):
   # Compute gradients from original loss
-  loss.backward(create_graph=True)
-  g = [param.grad.clone() for param in model.parameters()]
+  loss.backward(retain_variables=True)
+  # Gradients should be treated as constants (not using detach as volatility can creep in when double backprop is not implemented)
+  g = [Variable(param.grad.data) for param in model.parameters()]
   model.zero_grad()
 
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
   kl = (distribution * (distribution.log() - ref_distribution.log())).mean(1)
   # Compute gradients from (negative) KL loss (increases KL divergence)
-  (-kl).backward(create_graph=True)
-  k = [param.grad.clone() for param in model.parameters()]
+  (-kl).backward(retain_variables=True)
+  k = [Variable(param.grad.data) for param in model.parameters()]
   model.zero_grad()
 
   # Compute dot products of gradients
@@ -86,7 +86,7 @@ def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, t
 def _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, average_policies, old_policies=None):
   off_policy = old_policies is not None
   policy_loss, value_loss = 0, 0
-  
+
   # Calculate n-step returns in forward view, stepping backwards from the last state
   t = len(rewards)
   for i in reversed(range(t)):
@@ -105,7 +105,8 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     # Off-policy bias correction
     if off_policy:
       # g ← g + Σ_a [1 - c/ρ_a]_+∙π(a|s_i; θ)∙∇θ∙log(π(a|s_i; θ))∙(Q(s_i, a; θ) - V(s_i; θ)
-      single_step_policy_loss -= ((1 - args.trace_max / rho).clamp(min=0).unsqueeze(0) * policies[i] * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
+      bias_weight = (1 - args.trace_max / rho).clamp(min=0).unsqueeze(0) * policies[i]
+      single_step_policy_loss -= (bias_weight * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1)
     if args.trust_region:
       # Policy update dθ ← dθ + ∂θ/∂θ∙z*
       policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], single_step_policy_loss, args.trust_region_threshold)
@@ -245,7 +246,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input), (avg_hx, avg_cx))
 
           # Save outputs for offline training
-          [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, average_policies, old_policies), (policy, Q, V, action, reward, average_policy, old_policy))]
+          [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, average_policies, old_policies),
+                                             (policy, Q, V, action, reward, average_policy, old_policy))]
 
           # Unpack second half of transition
           next_input, action, _, _ = trajectory[i + 1]
@@ -258,8 +260,9 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
           # Qret = V(s_i; θ) for non-terminal s
           _, _, Qret, _ = model(Variable(next_input), (hx, cx))
           Qret = Qret.detach()
-        
+
         # Train the network off-policy
-        _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs, actions, rewards, Qret, average_policies, old_policies=old_policies)
+        _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs,
+               actions, rewards, Qret, average_policies, old_policies=old_policies)
 
   env.close()
