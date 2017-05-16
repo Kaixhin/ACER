@@ -2,7 +2,7 @@ async-rl
 ========
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-Actor-critic with experience replay (ACER) [[1]](#references). The agent also receives the previous action, reward and a step counter [[2]](#references).
+Actor-critic with experience replay (ACER) [[1]](#references). The agent also receives the previous action, reward and a step counter [[2]](#references). Uses batch off-policy updates to improve stability.
 
 Run with `./run.sh <options>`. When running `main.py` directly, set `OMP_NUM_THREADS=1` to prevent multiple OpenMP threads being run (and clashing) in each process.
 

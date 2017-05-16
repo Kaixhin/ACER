@@ -32,5 +32,12 @@ class EpisodicReplayMemory():
         else:
           return mem
 
+  # Samples batch of trajectories, truncating them to the same length
+  def sample_batch(self, batch_size, maxlen=0):
+    batch = [self.sample(maxlen=maxlen) for _ in range(batch_size)]
+    minimum_size = min(len(trajectory) for trajectory in batch)
+    batch = [trajectory[:minimum_size] for trajectory in batch]  # Truncate trajectories
+    return list(map(list, zip(*batch)))  # Transpose so that timesteps are packed together
+
   def __len__(self):
     return sum(len(episode) for episode in self.memory)
