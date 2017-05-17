@@ -1,6 +1,18 @@
 import torch
 from torch import nn
 from torch.nn import init
+from torch.nn import functional as F
+
+
+# Concatenated ReLU nonlinearity
+class CReLU(nn.Module):
+  def __init__(self, inplace=False):
+    super(CReLU, self).__init__()
+    self.relu1 = nn.ReLU(inplace=inplace)
+    self.relu2 = nn.ReLU(inplace=inplace)
+
+  def forward(self, x):
+    return torch.cat((self.relu1(x), self.relu2(-x)), 1)
 
 
 # TODO: Wrap up network into Agent class w/ perceive, act, train methods etc.
@@ -21,10 +33,10 @@ class ActorCritic(nn.Module):
     self.fc_critic = nn.Linear(hidden_size, self.action_size)
     # TODO: Change Q output to work like dueling network architecture?
 
-    # Xavier weight initialisation
+    # Orthogonal weight initialisation
     for name, p in self.named_parameters():
       if 'weight' in name:
-        init.xavier_uniform(p)
+        init.orthogonal(p)
       elif 'bias' in name:
         init.constant(p, 0)
     # Set LSTM forget gate bias to 1

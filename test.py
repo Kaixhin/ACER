@@ -82,6 +82,6 @@ def test(rank, args, T, shared_model):
       if T.value() - t_start >= args.evaluation_interval:
         can_test = True
 
-    time.sleep(1)  # Check if available to test every second
+    time.sleep(0.001)  # Check if available to test every millisecond
 
   env.close()
