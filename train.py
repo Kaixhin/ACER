@@ -59,14 +59,14 @@ def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, t
   # Compute gradients from original loss
   loss.backward(retain_variables=True)
   # Gradients should be treated as constants (not using detach as volatility can creep in when double backprop is not implemented)
-  g = [Variable(param.grad.data) for param in model.parameters()]
+  g = [Variable(param.grad.data.clone()) for param in model.parameters()]
   model.zero_grad()
 
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
   kl = (distribution * (distribution.log() - ref_distribution.log())).mean(1).mean(0)
   # Compute gradients from (negative) KL loss (increases KL divergence)
   (-kl).backward(retain_variables=True)
-  k = [Variable(param.grad.data) for param in model.parameters()]
+  k = [Variable(param.grad.data.clone()) for param in model.parameters()]
   model.zero_grad()
 
   # Compute dot products of gradients

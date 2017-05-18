@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from torch.nn import init
-from torch.nn import functional as F
 
 
 # Concatenated ReLU nonlinearity
@@ -51,7 +50,7 @@ class ActorCritic(nn.Module):
     x = self.elu(self.fc1(state))
     h = self.lstm(torch.cat((x, extra), 1), h)  # h is (hidden state, cell state)
     x = h[0]
-    policy = self.softmax(self.fc_actor(x))
+    policy = self.softmax(self.fc_actor(x)).clamp(max=1 - 1e-20)  # Prevent 1s and hence NaNs
     Q = self.fc_critic(x)
     V = (Q * policy).sum(1)  # V is expectation of Q under π
     return policy, Q, V, h
