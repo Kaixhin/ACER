@@ -46,6 +46,10 @@ parser.add_argument('--render', action='store_true', help='Render evaluation age
 
 
 if __name__ == '__main__':
+  # OS env setup
+  os.environ['OMP_NUM_THREADS'] = '1'
+  os.environ['OPENAI_REMOTE_VERBOSE'] = '0'
+  
   # Setup
   args = parser.parse_args()
   print(' ' * 26 + 'Options')
