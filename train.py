@@ -17,7 +17,7 @@ def _poisson(lmbd):
   while p > L:
     k += 1
     p *= random.uniform(0, 1)
-  return k - 1
+  return max(k - 1, 0)
 
 
 # Transfers gradients from thread-specific model to shared model
