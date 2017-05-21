@@ -56,15 +56,16 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
 
 
 # Computes a trust region loss based on an existing loss and two distributions
-def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, threshold):
+def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
   # Compute gradients from original loss
+  model.zero_grad()
   loss.backward(retain_graph=True)
   # Gradients should be treated as constants (not using detach as volatility can creep in when double backprop is not implemented)
   g = [Variable(param.grad.data.clone()) for param in model.parameters()]
   model.zero_grad()
 
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-  kl = (distribution * (distribution.log() - ref_distribution.log())).mean(1).mean(0)
+  kl = (ref_distribution * (ref_distribution.log() - distribution.log())).sum()
   # Compute gradients from (negative) KL loss (increases KL divergence)
   (-kl).backward(retain_graph=True)
   k = [Variable(param.grad.data.clone()) for param in model.parameters()]
@@ -117,7 +118,7 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
       single_step_policy_loss -= (bias_weight * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1).mean(0)
     if args.trust_region:
       # Policy update dθ ← dθ + ∂θ/∂θ∙z*
-      policy_loss += _trust_region_loss(model, shared_average_model, policies[i], average_policies[i], single_step_policy_loss, args.trust_region_threshold)
+      policy_loss += _trust_region_loss(model, policies[i], average_policies[i], single_step_policy_loss, args.trust_region_threshold)
     else:
       # Policy update dθ ← dθ + ∂θ/∂θ∙g
       policy_loss += single_step_policy_loss
