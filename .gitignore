@@ -92,3 +92,6 @@ ENV/
 *.html
 # Saved models
 *.pth
+
+# Mac storage
+.DS_Store

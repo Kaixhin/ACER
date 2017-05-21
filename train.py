@@ -58,7 +58,7 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
 # Computes a trust region loss based on an existing loss and two distributions
 def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, threshold):
   # Compute gradients from original loss
-  loss.backward(retain_variables=True)
+  loss.backward(retain_graph=True)
   # Gradients should be treated as constants (not using detach as volatility can creep in when double backprop is not implemented)
   g = [Variable(param.grad.data.clone()) for param in model.parameters()]
   model.zero_grad()
@@ -66,7 +66,7 @@ def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, t
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
   kl = (distribution * (distribution.log() - ref_distribution.log())).mean(1).mean(0)
   # Compute gradients from (negative) KL loss (increases KL divergence)
-  (-kl).backward(retain_variables=True)
+  (-kl).backward(retain_graph=True)
   k = [Variable(param.grad.data.clone()) for param in model.parameters()]
   model.zero_grad()
 
@@ -74,7 +74,10 @@ def _trust_region_loss(model, ref_model, distribution, ref_distribution, loss, t
   k_dot_g = sum(torch.sum(k_p * g_p) for k_p, g_p in zip(k, g))
   k_dot_k = sum(torch.sum(k_p ** 2) for k_p in k)
   # Compute trust region update
-  trust_factor = k_dot_k.data[0] > 0 and (k_dot_g - threshold) / k_dot_k or Variable(torch.zeros(1))
+  if k_dot_k.data[0] > 0:
+    trust_factor = (k_dot_g - threshold) / k_dot_k
+  else:
+    trust_factor = Variable(torch.zeros(1))
   # z* = g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k
   z_star = [g_p - trust_factor.expand_as(k_p) * k_p for g_p, k_p in zip(g, k)]
   trust_loss = 0
@@ -93,7 +96,10 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
   t = len(rewards)
   for i in reversed(range(t)):
     # Importance sampling weights ρ ← π(∙|s_i) / µ(∙|s_i); 1 for on-policy
-    rho = off_policy and policies[i].detach() / old_policies[i] or Variable(torch.ones(1, action_size))
+    if off_policy:
+      rho = policies[i].detach() / old_policies[i]
+    else:
+      rho = Variable(torch.ones(1, action_size))
 
     # Qret ← r_i + γQret
     Qret = rewards[i] + args.discount * Qret
@@ -264,5 +270,5 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         # Train the network off-policy
         _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs,
                actions, rewards, Qret, average_policies, old_policies=old_policies)
-
+    done = True
   env.close()
