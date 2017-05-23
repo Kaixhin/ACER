@@ -33,7 +33,7 @@ parser.add_argument('--trust-region-decay', type=float, default=0.99, metavar='�
 parser.add_argument('--trust-region-threshold', type=float, default=1, metavar='δ', help='Trust region threshold value')
 parser.add_argument('--reward-clip', action='store_true', help='Clip rewards to [-1, 1]')
 parser.add_argument('--lr', type=float, default=1e-3, metavar='η', help='Learning rate')
-parser.add_argument('--lr-decay', action='store_true', help='Linearly decay learning rate to 0')  # TODO: See if this is better on by default
+parser.add_argument('--lr-decay', action='store_true', help='Linearly decay learning rate to 0')
 parser.add_argument('--rmsprop-decay', type=float, default=0.99, metavar='α', help='RMSprop decay factor')
 parser.add_argument('--batch-size', type=int, default=16, metavar='SIZE', help='Off-policy batch size')
 parser.add_argument('--entropy-weight', type=float, default=0.001, metavar='β', help='Entropy regularisation weight')
@@ -46,15 +46,17 @@ parser.add_argument('--render', action='store_true', help='Render evaluation age
 
 
 if __name__ == '__main__':
-  # OS env setup
+  # BLAS setup
   os.environ['OMP_NUM_THREADS'] = '1'
-  os.environ['OPENAI_REMOTE_VERBOSE'] = '0'
+  os.environ['MKL_NUM_THREADS'] = '1'
+  # os.environ['OPENAI_REMOTE_VERBOSE'] = '0'
   
   # Setup
   args = parser.parse_args()
   print(' ' * 26 + 'Options')
   for k, v in vars(args).items():
     print(' ' * 26 + k + ': ' + str(v))
+  args.env = 'CartPole-v1'  # TODO: Remove hardcoded environment when code is more adaptable
   torch.manual_seed(args.seed)
   T = Counter()  # Global shared counter
 

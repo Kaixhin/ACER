@@ -4,7 +4,7 @@ ACER
 
 Actor-critic with experience replay (ACER) [[1]](#references). The agent also receives the previous action, reward and a step counter [[2]](#references). Uses batch off-policy updates to improve stability.
 
-Run with `./run.sh <options>`. When running `main.py` directly, set `OMP_NUM_THREADS=1` to prevent multiple OpenMP threads being run (and clashing) in each process.
+Run with `python main.py <options>`.
 
 Requirements
 ------------
@@ -20,7 +20,6 @@ Acknowledgements
 - [@ikostrikov](https://github.com/ikostrikov) for [pytorch-a3c](https://github.com/ikostrikov/pytorch-a3c)
 - [@apaszke](https://github.com/apaszke) for [Reinforcement Learning (DQN) tutorial](http://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html)
 - [@pfnet](https://github.com/pfnet) for [ChainerRL](https://github.com/pfnet/chainerrl)
-
 
 References
 ----------

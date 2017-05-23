@@ -4,6 +4,7 @@ import random
 import gym
 import torch
 from torch import nn
+from torch.nn import functional as F
 from torch.autograd import Variable
 
 from memory import EpisodicReplayMemory
@@ -65,7 +66,7 @@ def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
   model.zero_grad()
 
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-  kl = (ref_distribution * (ref_distribution.log() - distribution.log())).sum()
+  kl = F.kl_div(distribution.log(), ref_distribution, size_average=False)
   # Compute gradients from (negative) KL loss (increases KL divergence)
   (-kl).backward(retain_graph=True)
   k = [Variable(param.grad.data.clone()) for param in model.parameters()]
@@ -76,7 +77,7 @@ def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
   k_dot_k = sum(torch.sum(k_p ** 2) for k_p in k)
   # Compute trust region update
   if k_dot_k.data[0] > 0:
-    trust_factor = (k_dot_g - threshold) / k_dot_k
+    trust_factor = ((k_dot_g - threshold) / k_dot_k).clamp(min=0)
   else:
     trust_factor = Variable(torch.zeros(1))
   # z* = g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k
