@@ -154,7 +154,8 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.train()
 
-  memory = EpisodicReplayMemory(args.memory_capacity, args.max_episode_length)
+  if not args.on_policy:
+    memory = EpisodicReplayMemory(args.memory_capacity, args.max_episode_length)
 
   t = 1  # Thread step counter
   done = True  # Start new episode
@@ -198,8 +199,9 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
         episode_length += 1  # Increase episode counter
 
-        # Save (beginning part of) transition for offline training
-        memory.append(input, action, reward, policy.data)  # Save just tensors
+        if not args.on_policy:
+          # Save (beginning part of) transition for offline training
+          memory.append(input, action, reward, policy.data)  # Save just tensors
         # Save outputs for online training
         [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, average_policies),
                                            (policy, Q, V, Variable(torch.LongTensor([[action]])), Variable(torch.Tensor([[reward]])), average_policy))]
@@ -216,8 +218,9 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         # Qret = 0 for terminal s
         Qret = Variable(torch.zeros(1, 1))
 
-        # Save terminal state for offline training
-        memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
+        if not args.on_policy:
+          # Save terminal state for offline training
+          memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
       else:
         # Qret = V(s_i; θ) for non-terminal s
         _, _, Qret, _ = model(Variable(input), (hx, cx))
@@ -231,7 +234,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         break
 
     # Train the network off-policy when enough experience has been collected
-    if len(memory) >= args.replay_start:
+    if not args.on_policy and len(memory) >= args.replay_start:
       # Sample a number of off-policy episodes based on the replay ratio
       for _ in range(_poisson(args.replay_ratio)):
         # Act and train off-policy for a batch of (truncated) episode

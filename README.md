@@ -4,7 +4,7 @@ ACER
 
 Actor-critic with experience replay (ACER) [[1]](#references). The agent also receives the previous action, reward and a step counter [[2]](#references). Uses batch off-policy updates to improve stability.
 
-Run with `python main.py <options>`.
+Run with `python main.py <options>`. To run asynchronous advantage actor-critic (A3C) [[3]](#references) (but with a Q-value head), use the `--on-policy` option.
 
 Requirements
 ------------
@@ -26,3 +26,4 @@ References
 
 [1] [Sample Efficient Actor-Critic with Experience Replay](https://arxiv.org/abs/1611.01224)  
 [2] [Learning to Navigate in Complex Environments](https://arxiv.org/abs/1611.03673)  
+[3] [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783)  
