@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 import os
+import platform
 import gym
 import torch
 from torch import multiprocessing as mp
@@ -15,7 +16,6 @@ from utils import Counter
 
 parser = argparse.ArgumentParser(description='A3C')
 parser.add_argument('--seed', type=int, default=123, help='Random seed')
-parser.add_argument('--env', type=str, default='CartPole-v1', metavar='ENV', help='OpenAI Gym environment')
 parser.add_argument('--num-processes', type=int, default=6, metavar='N', help='Number of training async agents (does not include single validation agent)')
 parser.add_argument('--T-max', type=int, default=1e6, metavar='STEPS', help='Number of training steps')
 parser.add_argument('--t-max', type=int, default=200, metavar='STEPS', help='Max number of forward steps for A3C before update')
@@ -58,6 +58,7 @@ if __name__ == '__main__':
   for k, v in vars(args).items():
     print(' ' * 26 + k + ': ' + str(v))
   args.env = 'CartPole-v1'  # TODO: Remove hardcoded environment when code is more adaptable
+  mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
   torch.manual_seed(args.seed)
   T = Counter()  # Global shared counter
 
