@@ -125,7 +125,7 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
       policy_loss += single_step_policy_loss
 
     # Entropy regularisation dθ ← dθ - β∙∇θH(π(s_i; θ))
-    policy_loss += args.entropy_weight * -(policies[i].log() * policies[i]).sum(1).mean(0)
+    policy_loss -= args.entropy_weight * -(policies[i].log() * policies[i]).sum(1).mean(0)
 
     # Value update dθ ← dθ - ∇θ∙1/2∙(Qret - Q(s_i, a_i; θ))^2
     Q = Qs[i].gather(1, actions[i])
