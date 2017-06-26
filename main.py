@@ -37,7 +37,7 @@ parser.add_argument('--lr', type=float, default=1e-3, metavar='η', help='Learni
 parser.add_argument('--lr-decay', action='store_true', help='Linearly decay learning rate to 0')
 parser.add_argument('--rmsprop-decay', type=float, default=0.99, metavar='α', help='RMSprop decay factor')
 parser.add_argument('--batch-size', type=int, default=16, metavar='SIZE', help='Off-policy batch size')
-parser.add_argument('--entropy-weight', type=float, default=0.001, metavar='β', help='Entropy regularisation weight')
+parser.add_argument('--entropy-weight', type=float, default=0, metavar='β', help='Entropy regularisation weight')
 parser.add_argument('--no-time-normalisation', action='store_true', help='Do not normalise loss by number of time steps')
 parser.add_argument('--max-gradient-norm', type=float, default=10, metavar='VALUE', help='Max value of gradient L1 norm for gradient clipping')
 parser.add_argument('--evaluate', action='store_true', help='Evaluate only')
@@ -51,7 +51,7 @@ if __name__ == '__main__':
   os.environ['OMP_NUM_THREADS'] = '1'
   os.environ['MKL_NUM_THREADS'] = '1'
   # os.environ['OPENAI_REMOTE_VERBOSE'] = '0'
-  
+
   # Setup
   args = parser.parse_args()
   print(' ' * 26 + 'Options')
