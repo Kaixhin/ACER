@@ -39,7 +39,10 @@ def _adjust_learning_rate(optimiser, lr):
 def _update_networks(args, T, model, shared_model, shared_average_model, loss, optimiser):
   # Zero shared and local grads
   optimiser.zero_grad()
-  # Calculate gradients (not losses defined as negatives of normal update rules for gradient descent)
+  """
+  Calculate gradients for gradient descent on loss functions
+  Note that math comments follow the paper, which is formulated for gradient ascent
+  """
   loss.backward()
   # Gradient L1 norm clipping
   nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm, 1)
