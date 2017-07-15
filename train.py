@@ -44,8 +44,8 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
   Note that math comments follow the paper, which is formulated for gradient ascent
   """
   loss.backward()
-  # Gradient L1 norm clipping
-  nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm, 1)
+  # Gradient L2 normalisation
+  nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
 
   # Transfer gradients to shared model and update
   _transfer_grads_to_shared_model(model, shared_model)
@@ -188,7 +188,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
       while not done and t - t_start < args.t_max:
         # Calculate policy and values
-        input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
+        input = extend_input(state, action_to_one_hot(action, action_size), reward)
         policy, Q, V, (hx, cx) = model(Variable(input), (hx, cx))
         average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(input), (avg_hx, avg_cx))
 
@@ -223,7 +223,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
         if not args.on_policy:
           # Save terminal state for offline training
-          memory.append(extend_input(state, action_to_one_hot(action, action_size), reward, episode_length), None, None, None)
+          memory.append(extend_input(state, action_to_one_hot(action, action_size), reward), None, None, None)
       else:
         # Qret = V(s_i; θ) for non-terminal s
         _, _, Qret, _ = model(Variable(input), (hx, cx))
@@ -279,4 +279,5 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         _train(args, T, model, shared_model, shared_average_model, optimiser, policies, Qs, Vs,
                actions, rewards, Qret, average_policies, old_policies=old_policies)
     done = True
+
   env.close()

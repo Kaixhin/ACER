@@ -5,7 +5,6 @@ import platform
 import gym
 import torch
 from torch import multiprocessing as mp
-# TODO: Consider using Visdom
 
 from model import ActorCritic
 from optim import SharedRMSprop
@@ -14,11 +13,11 @@ from test import test
 from utils import Counter
 
 
-parser = argparse.ArgumentParser(description='A3C')
+parser = argparse.ArgumentParser(description='ACER')
 parser.add_argument('--seed', type=int, default=123, help='Random seed')
 parser.add_argument('--num-processes', type=int, default=6, metavar='N', help='Number of training async agents (does not include single validation agent)')
-parser.add_argument('--T-max', type=int, default=1e6, metavar='STEPS', help='Number of training steps')
-parser.add_argument('--t-max', type=int, default=200, metavar='STEPS', help='Max number of forward steps for A3C before update')
+parser.add_argument('--T-max', type=int, default=500000, metavar='STEPS', help='Number of training steps')
+parser.add_argument('--t-max', type=int, default=100, metavar='STEPS', help='Max number of forward steps for A3C before update')
 parser.add_argument('--max-episode-length', type=int, default=500, metavar='LENGTH', help='Maximum episode length')
 parser.add_argument('--hidden-size', type=int, default=32, metavar='SIZE', help='Hidden size of LSTM cell')
 parser.add_argument('--model', type=str, metavar='PARAMS', help='Pretrained model (state dict)')
@@ -33,16 +32,16 @@ parser.add_argument('--trust-region', action='store_true', help='Use trust regio
 parser.add_argument('--trust-region-decay', type=float, default=0.99, metavar='α', help='Average model weight decay rate')
 parser.add_argument('--trust-region-threshold', type=float, default=1, metavar='δ', help='Trust region threshold value')
 parser.add_argument('--reward-clip', action='store_true', help='Clip rewards to [-1, 1]')
-parser.add_argument('--lr', type=float, default=1e-3, metavar='η', help='Learning rate')
+parser.add_argument('--lr', type=float, default=0.0007, metavar='η', help='Learning rate')
 parser.add_argument('--lr-decay', action='store_true', help='Linearly decay learning rate to 0')
 parser.add_argument('--rmsprop-decay', type=float, default=0.99, metavar='α', help='RMSprop decay factor')
 parser.add_argument('--batch-size', type=int, default=16, metavar='SIZE', help='Off-policy batch size')
-parser.add_argument('--entropy-weight', type=float, default=0, metavar='β', help='Entropy regularisation weight')
+parser.add_argument('--entropy-weight', type=float, default=0.0001, metavar='β', help='Entropy regularisation weight')
 parser.add_argument('--no-time-normalisation', action='store_true', help='Do not normalise loss by number of time steps')
-parser.add_argument('--max-gradient-norm', type=float, default=10, metavar='VALUE', help='Max value of gradient L1 norm for gradient clipping')
+parser.add_argument('--max-gradient-norm', type=float, default=40, metavar='VALUE', help='Gradient L2 normalisation')
 parser.add_argument('--evaluate', action='store_true', help='Evaluate only')
 parser.add_argument('--evaluation-interval', type=int, default=25000, metavar='STEPS', help='Number of training steps between evaluations (roughly)')
-parser.add_argument('--evaluation-episodes', type=int, default=20, metavar='N', help='Number of evaluation episodes to average over')
+parser.add_argument('--evaluation-episodes', type=int, default=10, metavar='N', help='Number of evaluation episodes to average over')
 parser.add_argument('--render', action='store_true', help='Render evaluation agent')
 
 
@@ -58,7 +57,7 @@ if __name__ == '__main__':
   for k, v in vars(args).items():
     print(' ' * 26 + k + ': ' + str(v))
   args.env = 'CartPole-v1'  # TODO: Remove hardcoded environment when code is more adaptable
-  mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
+  # mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
   torch.manual_seed(args.seed)
   T = Counter()  # Global shared counter
 

@@ -2,7 +2,7 @@ ACER
 ====
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-Actor-critic with experience replay (ACER) [[1]](#references). The agent also receives the previous action, reward and a step counter [[2]](#references). Uses batch off-policy updates to improve stability.
+Actor-critic with experience replay (ACER) [[1]](#references). The agent also receives the previous action and reward [[2]](#references). Uses batch off-policy updates to improve stability.
 
 Run with `python main.py <options>`. To run asynchronous advantage actor-critic (A3C) [[3]](#references) (but with a Q-value head), use the `--on-policy` option.
 

@@ -32,11 +32,10 @@ def action_to_one_hot(action_index, action_size):
   return action
 
 
-# Creates an extended input (state + previous action + reward + timestep)
-def extend_input(state, action, reward, timestep):
+# Creates an extended input (state + previous action + reward)
+def extend_input(state, action, reward):
   reward = torch.Tensor([reward]).unsqueeze(0)
-  timestep = torch.Tensor([timestep]).unsqueeze(0)
-  return torch.cat((state, action, reward, timestep), 1)
+  return torch.cat((state, action, reward), 1)
 
 
 # Plots min, max and mean + standard deviation bars of a population over time

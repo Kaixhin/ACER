@@ -48,7 +48,7 @@ def test(rank, args, T, shared_model):
             env.render()
 
           # Calculate policy
-          input = extend_input(state, action_to_one_hot(action, action_size), reward, episode_length)
+          input = extend_input(state, action_to_one_hot(action, action_size), reward)
           policy, _, _, (hx, cx) = model(Variable(input, volatile=True), (hx.detach(), cx.detach()))  # Break graph for memory efficiency
 
           # Choose action greedily
@@ -72,13 +72,15 @@ def test(rank, args, T, shared_model):
             t_start,
             sum(avg_rewards) / args.evaluation_episodes,
             sum(avg_episode_lengths) / args.evaluation_episodes))
+
+      if args.evaluate:
+        return
+
       rewards.append(avg_rewards)  # Keep all evaluations
       steps.append(t_start)
       plot_line(steps, rewards)  # Plot rewards
       torch.save(model.state_dict(), 'model.pth')  # Save model params
       can_test = False  # Finish testing
-      if args.evaluate:
-        return
     else:
       if T.value() - t_start >= args.evaluation_interval:
         can_test = True
