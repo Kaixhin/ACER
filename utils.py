@@ -25,19 +25,6 @@ def state_to_tensor(state):
   return torch.from_numpy(state).float().unsqueeze(0)
 
 
-# Converts an action index and action space size into a one-hot batch tensor
-def action_to_one_hot(action_index, action_size):
-  action = torch.zeros(1, action_size)
-  action[0, action_index] = 1
-  return action
-
-
-# Creates an extended input (state + previous action + reward)
-def extend_input(state, action, reward):
-  reward = torch.Tensor([reward]).unsqueeze(0)
-  return torch.cat((state, action, reward), 1)
-
-
 # Plots min, max and mean + standard deviation bars of a population over time
 def plot_line(xs, ys_population):
   max_colour = 'rgb(0, 132, 180)'
