@@ -139,7 +139,7 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     # Qret ← ρ¯_a_i∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
     Qret = truncated_rho * (Qret - Q.detach()) + Vs[i].detach()
 
-  # Optionally normalise loss by number of time steps
+  # Optionally normalise loss by number of time steps (better gradients for adaptive gradient optimisers)
   if not args.no_time_normalisation:
     policy_loss /= t
     value_loss /= t
