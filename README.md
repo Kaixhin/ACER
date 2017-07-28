@@ -14,6 +14,11 @@ Requirements
 - [OpenAI Gym](https://gym.openai.com/)
 - [Plotly](https://plot.ly/python/)
 
+Results
+-------
+
+![ACER](figures/acer.png)
+
 Acknowledgements
 ----------------
 
