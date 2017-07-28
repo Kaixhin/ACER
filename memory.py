@@ -4,6 +4,7 @@ from collections import deque, namedtuple
 
 Transition = namedtuple('Transition', ('state', 'action', 'reward', 'policy'))
 
+
 class EpisodicReplayMemory():
   def __init__(self, capacity, max_episode_length):
     # Max number of transitions possible will be the memory capacity, could be much less

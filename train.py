@@ -128,7 +128,7 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
       policy_loss += single_step_policy_loss
 
     # Entropy regularisation dθ ← dθ + β∙∇θH(π(s_i; θ))
-    policy_loss -= args.entropy_weight * -(policies[i].log() * policies[i]).sum(1).mean(0)  # Sum over probabilities, average over batch 
+    policy_loss -= args.entropy_weight * -(policies[i].log() * policies[i]).sum(1).mean(0)  # Sum over probabilities, average over batch
 
     # Value update dθ ← dθ - ∇θ∙1/2∙(Qret - Q(s_i, a_i; θ))^2
     Q = Qs[i].gather(1, actions[i])
@@ -139,10 +139,6 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     # Qret ← ρ¯_a_i∙(Qret - Q(s_i, a_i; θ)) + V(s_i; θ)
     Qret = truncated_rho * (Qret - Q.detach()) + Vs[i].detach()
 
-  # Optionally normalise loss by number of time steps (better gradients for adaptive gradient optimisers)
-  if not args.no_time_normalisation:
-    policy_loss /= t
-    value_loss /= t
   # Update networks
   _update_networks(args, T, model, shared_model, shared_average_model, policy_loss + value_loss, optimiser)
 
@@ -153,12 +149,12 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
   env = gym.make(args.env)
   env.seed(args.seed + rank)
-  action_size = env.action_space.n
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.train()
 
   if not args.on_policy:
-    memory = EpisodicReplayMemory(args.memory_capacity, args.max_episode_length)
+    # Normalise memory capacity by number of training processes
+    memory = EpisodicReplayMemory(args.memory_capacity // args.num_processes, args.max_episode_length)
 
   t = 1  # Thread step counter
   done = True  # Start new episode

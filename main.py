@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 import os
-import platform
+# import platform
 import gym
 import torch
 from torch import multiprocessing as mp
@@ -37,7 +37,6 @@ parser.add_argument('--lr-decay', action='store_true', help='Linearly decay lear
 parser.add_argument('--rmsprop-decay', type=float, default=0.99, metavar='α', help='RMSprop decay factor')
 parser.add_argument('--batch-size', type=int, default=16, metavar='SIZE', help='Off-policy batch size')
 parser.add_argument('--entropy-weight', type=float, default=0.0001, metavar='β', help='Entropy regularisation weight')
-parser.add_argument('--no-time-normalisation', action='store_true', help='Do not normalise loss by number of time steps')
 parser.add_argument('--max-gradient-norm', type=float, default=40, metavar='VALUE', help='Gradient L2 normalisation')
 parser.add_argument('--evaluate', action='store_true', help='Evaluate only')
 parser.add_argument('--evaluation-interval', type=int, default=25000, metavar='STEPS', help='Number of training steps between evaluations (roughly)')
@@ -49,7 +48,6 @@ if __name__ == '__main__':
   # BLAS setup
   os.environ['OMP_NUM_THREADS'] = '1'
   os.environ['MKL_NUM_THREADS'] = '1'
-  # os.environ['OPENAI_REMOTE_VERBOSE'] = '0'
 
   # Setup
   args = parser.parse_args()
