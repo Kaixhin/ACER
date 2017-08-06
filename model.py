@@ -22,5 +22,5 @@ class ActorCritic(nn.Module):
     x = h[0]
     policy = self.softmax(self.fc_actor(x)).clamp(max=1 - 1e-20)  # Prevent 1s and hence NaNs
     Q = self.fc_critic(x)
-    V = (Q * policy).sum(1)  # V is expectation of Q under π
+    V = (Q * policy).sum(1, keepdim=True)  # V is expectation of Q under π
     return policy, Q, V, h

@@ -50,7 +50,7 @@ def test(rank, args, T, shared_model):
           policy, _, _, (hx, cx) = model(Variable(state, volatile=True), (hx.detach(), cx.detach()))  # Break graph for memory efficiency
 
           # Choose action greedily
-          action = policy.max(1)[1].data[0, 0]
+          action = policy.max(1)[1].data[0]
 
           # Step
           state, reward, done, _ = env.step(action)
