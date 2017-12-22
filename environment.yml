@@ -1,0 +1,8 @@
+name: acer
+channels:
+  - pytorch
+dependencies:
+  - plotly
+  - pytorch
+  - pip:
+    - gym

@@ -9,7 +9,7 @@ class ActorCritic(nn.Module):
     self.action_size = action_space.n
 
     self.relu = nn.ReLU(inplace=True)
-    self.softmax = nn.Softmax()
+    self.softmax = nn.Softmax(dim=1)
 
     self.fc1 = nn.Linear(self.state_size, hidden_size)
     self.lstm = nn.LSTMCell(hidden_size, hidden_size)
