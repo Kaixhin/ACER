@@ -44,7 +44,7 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
   """
   loss.backward()
   # Gradient L2 normalisation
-  nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
+  nn.utils.clip_grad_norm_(model.parameters(), args.max_gradient_norm)
 
   # Transfer gradients to shared model and update
   _transfer_grads_to_shared_model(model, shared_model)
@@ -182,6 +182,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
       while not done and t - t_start < args.t_max:
         # Calculate policy and values
+        # hx and cx are hidden states in the LSTM
         policy, Q, V, (hx, cx) = model(Variable(state), (hx, cx))
         average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(state), (avg_hx, avg_cx))
 

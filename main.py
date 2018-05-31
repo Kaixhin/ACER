@@ -88,6 +88,7 @@ if __name__ == '__main__':
     for rank in range(1, args.num_processes + 1):
       p = mp.Process(target=train, args=(rank, args, T, shared_model, shared_average_model, optimiser))
       p.start()
+      print ('process ',rank, ' started')
       processes.append(p)
 
   # Clean up
