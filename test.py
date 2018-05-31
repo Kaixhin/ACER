@@ -4,7 +4,7 @@ from datetime import datetime
 import gym
 import torch
 from torch.autograd import Variable
-
+from time import sleep
 from model import ActorCritic
 from utils import state_to_tensor, plot_line
 
@@ -12,7 +12,7 @@ from utils import state_to_tensor, plot_line
 def test(rank, args, T, shared_model):
   torch.manual_seed(args.seed + rank)
 
-  env = gym.make(args.env)
+  env = gym.make(args.env).unwrapped
   env.seed(args.seed + rank)
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.eval()
@@ -51,9 +51,8 @@ def test(rank, args, T, shared_model):
 
           # Choose action greedily
           action = policy.max(1)[1].data[0]
-
           # Step
-          state, reward, done, _ = env.step(action)
+          state, reward, done, _ = env.step(action.item())
           state = state_to_tensor(state)
           reward_sum += reward
           done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length

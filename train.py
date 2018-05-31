@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Variable
-
+from time import sleep
 from memory import EpisodicReplayMemory
 from model import ActorCritic
 from utils import state_to_tensor
@@ -158,7 +158,7 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
   t = 1  # Thread step counter
   done = True  # Start new episode
-
+  print ('##################################################################################################33Training Begins')
   while T.value() <= args.T_max:
     # On-policy episode loop
     while True:
@@ -188,10 +188,11 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
         average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(state), (avg_hx, avg_cx))
 
         # Sample action
-        action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
-
-        # Step
-        next_state, reward, done, _ = env.step(action)
+        # action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
+        m = torch.distributions.Categorical(policy)
+        action = m.sample()
+        # print("m :", m,"\naction :",action)
+        next_state, reward, done, _ = env.step(action.item())
         next_state = state_to_tensor(next_state)
         reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
         done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
