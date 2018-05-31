@@ -6,7 +6,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Variable
-
 from memory import EpisodicReplayMemory
 from model import ActorCritic
 from utils import state_to_tensor
@@ -45,7 +44,7 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
   """
   loss.backward()
   # Gradient L2 normalisation
-  nn.utils.clip_grad_norm(model.parameters(), args.max_gradient_norm)
+  nn.utils.clip_grad_norm_(model.parameters(), args.max_gradient_norm)
 
   # Transfer gradients to shared model and update
   _transfer_grads_to_shared_model(model, shared_model)
@@ -158,7 +157,6 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
   t = 1  # Thread step counter
   done = True  # Start new episode
-
   while T.value() <= args.T_max:
     # On-policy episode loop
     while True:
@@ -184,14 +182,16 @@ def train(rank, args, T, shared_model, shared_average_model, optimiser):
 
       while not done and t - t_start < args.t_max:
         # Calculate policy and values
+        # hx and cx are hidden states in the LSTM
         policy, Q, V, (hx, cx) = model(Variable(state), (hx, cx))
         average_policy, _, _, (avg_hx, avg_cx) = shared_average_model(Variable(state), (avg_hx, avg_cx))
 
         # Sample action
-        action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
-
-        # Step
-        next_state, reward, done, _ = env.step(action)
+        # action = policy.multinomial().data[0, 0]  # Graph broken as loss for stochastic action calculated manually
+        m = torch.distributions.Categorical(policy)
+        action = m.sample()
+        # print("m :", m,"\naction :",action)
+        next_state, reward, done, _ = env.step(action.item())
         next_state = state_to_tensor(next_state)
         reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
         done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length
