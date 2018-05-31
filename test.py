@@ -4,7 +4,6 @@ from datetime import datetime
 import gym
 import torch
 from torch.autograd import Variable
-from time import sleep
 from model import ActorCritic
 from utils import state_to_tensor, plot_line
 
