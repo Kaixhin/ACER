@@ -3,7 +3,6 @@ import time
 from datetime import datetime
 import gym
 import torch
-from torch.autograd import Variable
 
 from model import ActorCritic
 from utils import state_to_tensor, plot_line
@@ -35,8 +34,8 @@ def test(rank, args, T, shared_model):
           if done:
             # Sync with shared model every episode
             model.load_state_dict(shared_model.state_dict())
-            hx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
-            cx = Variable(torch.zeros(1, args.hidden_size), volatile=True)
+            hx = torch.zeros(1, args.hidden_size)
+            cx = torch.zeros(1, args.hidden_size)
             # Reset environment and done flag
             state = state_to_tensor(env.reset())
             done, episode_length = False, 0
@@ -47,13 +46,14 @@ def test(rank, args, T, shared_model):
             env.render()
 
           # Calculate policy
-          policy, _, _, (hx, cx) = model(Variable(state, volatile=True), (hx.detach(), cx.detach()))  # Break graph for memory efficiency
+          with torch.no_grad():
+            policy, _, _, (hx, cx) = model(state, (hx, cx))
 
           # Choose action greedily
-          action = policy.max(1)[1].data[0]
+          action = policy.max(1)[1][0]
 
           # Step
-          state, reward, done, _ = env.step(action)
+          state, reward, done, _ = env.step(action.item())
           state = state_to_tensor(state)
           reward_sum += reward
           done = done or episode_length >= args.max_episode_length  # Stop episodes at a max length

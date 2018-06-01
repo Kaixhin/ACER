@@ -58,6 +58,7 @@ if __name__ == '__main__':
   # mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
   torch.manual_seed(args.seed)
   T = Counter()  # Global shared counter
+  gym.logger.set_level(gym.logger.ERROR)  # Disable Gym warnings
 
   # Create shared network
   env = gym.make(args.env)
@@ -88,6 +89,7 @@ if __name__ == '__main__':
     for rank in range(1, args.num_processes + 1):
       p = mp.Process(target=train, args=(rank, args, T, shared_model, shared_average_model, optimiser))
       p.start()
+      print('Process ' + str(rank) + ' started')
       processes.append(p)
 
   # Clean up

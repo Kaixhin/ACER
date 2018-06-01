@@ -31,7 +31,7 @@ def plot_line(xs, ys_population):
   mean_colour = 'rgb(0, 172, 237)'
   std_colour = 'rgba(29, 202, 255, 0.2)'
 
-  ys = torch.Tensor(ys_population)
+  ys = torch.tensor(ys_population)
   ys_min = ys.min(1)[0].squeeze()
   ys_max = ys.max(1)[0].squeeze()
   ys_mean = ys.mean(1).squeeze()
