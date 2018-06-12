@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 import os
+import csv
 # import platform
 import gym
 import torch
@@ -42,6 +43,8 @@ parser.add_argument('--evaluate', action='store_true', help='Evaluate only')
 parser.add_argument('--evaluation-interval', type=int, default=25000, metavar='STEPS', help='Number of training steps between evaluations (roughly)')
 parser.add_argument('--evaluation-episodes', type=int, default=10, metavar='N', help='Number of evaluation episodes to average over')
 parser.add_argument('--render', action='store_true', help='Render evaluation agent')
+parser.add_argument('--name', type=str, default = 'results', help='Save folder')
+parser.add_argument('--env', type=str, default = 'CartPole-v1',help='environment name')
 
 
 if __name__ == '__main__':
@@ -51,9 +54,14 @@ if __name__ == '__main__':
 
   # Setup
   args = parser.parse_args()
+  os.system('mkdir -p results')
+  os.system('mkdir -p results/'+args.name)
+  myfile = open('results/'+args.name + '/params.txt','w')
   print(' ' * 26 + 'Options')
   for k, v in vars(args).items():
     print(' ' * 26 + k + ': ' + str(v))
+    myfile.write(k + ' : ' + str(v) + '\n')
+  myfile.close()
   args.env = 'CartPole-v1'  # TODO: Remove hardcoded environment when code is more adaptable
   # mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
   torch.manual_seed(args.seed)
@@ -78,6 +86,10 @@ if __name__ == '__main__':
   optimiser.share_memory()
   env.close()
 
+  fields = ['T_Value', 'Reward', 'Avg_Steps', 'time']
+  with open('results/'+args.name+'/test_results.csv', 'w') as f:
+    writer = csv.writer(f)
+    writer.writerow(fields)
   # Start validation agent
   processes = []
   p = mp.Process(target=test, args=(0, args, T, shared_model))

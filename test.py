@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 import gym
 import torch
+import csv
 
 from model import ActorCritic
 from utils import state_to_tensor, plot_line
@@ -70,14 +71,17 @@ def test(rank, args, T, shared_model):
             t_start,
             sum(avg_rewards) / args.evaluation_episodes,
             sum(avg_episode_lengths) / args.evaluation_episodes))
-
+      fields = [t_start, sum(avg_rewards) / args.evaluation_episodes, sum(avg_episode_lengths) / args.evaluation_episodes, str(datetime.now())]
+      with open('results/'+args.name+'/test_results.csv', 'a') as f:
+        writer = csv.writer(f)
+        writer.writerow(fields)
       if args.evaluate:
         return
 
       rewards.append(avg_rewards)  # Keep all evaluations
       steps.append(t_start)
       plot_line(steps, rewards)  # Plot rewards
-      torch.save(model.state_dict(), 'model.pth')  # Save model params
+      torch.save(model.state_dict(), 'results/'+args.name+'/model.pth')  # Save model params
       can_test = False  # Finish testing
     else:
       if T.value() - t_start >= args.evaluation_interval:
