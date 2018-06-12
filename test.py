@@ -80,7 +80,7 @@ def test(rank, args, T, shared_model):
 
       rewards.append(avg_rewards)  # Keep all evaluations
       steps.append(t_start)
-      plot_line(steps, rewards)  # Plot rewards
+      plot_line(steps, rewards, args)  # Plot rewards
       torch.save(model.state_dict(), 'results/'+args.name+'/model.pth')  # Save model params
       can_test = False  # Finish testing
     else:
