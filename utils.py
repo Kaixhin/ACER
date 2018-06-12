@@ -49,4 +49,4 @@ def plot_line(xs, ys_population):
     'layout': dict(title='Rewards',
                    xaxis={'title': 'Step'},
                    yaxis={'title': 'Average Reward'})
-  }, filename='rewards.html', auto_open=False)
+  }, filename='results/'+args.name+'/rewards.html', auto_open=False)
