@@ -3,7 +3,7 @@ import plotly
 from plotly.graph_objs import Scatter, Line
 import torch
 from torch import multiprocessing as mp
-
+import os
 
 # Global counter
 class Counter():
@@ -26,7 +26,7 @@ def state_to_tensor(state):
 
 
 # Plots min, max and mean + standard deviation bars of a population over time
-def plot_line(xs, ys_population, args):
+def plot_line(xs, ys_population, save_dir):
   max_colour = 'rgb(0, 132, 180)'
   mean_colour = 'rgb(0, 172, 237)'
   std_colour = 'rgba(29, 202, 255, 0.2)'
@@ -49,4 +49,4 @@ def plot_line(xs, ys_population, args):
     'layout': dict(title='Rewards',
                    xaxis={'title': 'Step'},
                    yaxis={'title': 'Average Reward'})
-  }, filename='results/'+args.name+'/rewards.html', auto_open=False)
+  }, filename=os.path.join(save_dir, 'rewards.html'), auto_open=False)

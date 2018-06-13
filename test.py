@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import time
 from datetime import datetime
 import gym
@@ -16,6 +17,12 @@ def test(rank, args, T, shared_model):
   env.seed(args.seed + rank)
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.eval()
+
+  if not os.path.exists('results'):
+    os.makedirs('results')
+  save_dir = os.path.join('results', args.name)  
+  if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
 
   can_test = True  # Test flag
   t_start = 1  # Test step counter to check against global counter
@@ -72,7 +79,7 @@ def test(rank, args, T, shared_model):
             sum(avg_rewards) / args.evaluation_episodes,
             sum(avg_episode_lengths) / args.evaluation_episodes))
       fields = [t_start, sum(avg_rewards) / args.evaluation_episodes, sum(avg_episode_lengths) / args.evaluation_episodes, str(datetime.now())]
-      with open('results/'+args.name+'/test_results.csv', 'a') as f:
+      with open(os.path.join(save_dir, 'test_results.csv'), 'a') as f:
         writer = csv.writer(f)
         writer.writerow(fields)
       if args.evaluate:
@@ -80,8 +87,8 @@ def test(rank, args, T, shared_model):
 
       rewards.append(avg_rewards)  # Keep all evaluations
       steps.append(t_start)
-      plot_line(steps, rewards, args)  # Plot rewards
-      torch.save(model.state_dict(), 'results/'+args.name+'/model.pth')  # Save model params
+      plot_line(steps, rewards, save_dir)  # Plot rewards
+      torch.save(model.state_dict(), os.path.join(save_dir, 'model.pth'))  # Save model params
       can_test = False  # Finish testing
     else:
       if T.value() - t_start >= args.evaluation_interval:
