@@ -91,7 +91,7 @@ def test(rank, args, T, shared_model):
       results_dict['time'].append(str(datetime.now()))
 
       # Dumping the results in pickle format  
-      with open(os.join.path(save_dir, 'results.pck'), 'wb') as file:
+      with open(os.path.join(save_dir, 'results.pck'), 'wb') as file:
         pickle.dump(results_dict, file)
 
       # Saving the data in csv format
