@@ -5,6 +5,7 @@ from datetime import datetime
 import gym
 import torch
 import csv
+import pickle
 
 from model import ActorCritic
 from utils import state_to_tensor, plot_line
@@ -29,6 +30,9 @@ def test(rank, args, T, shared_model):
   rewards, steps = [], []  # Rewards and steps for plotting
   l = str(len(str(args.T_max)))  # Max num. of digits for logging steps
   done = True  # Start new episode
+
+  # stores step, reward, avg_steps and time 
+  results_dict = {'t': [], 'reward': [], 'avg_steps': [], 'time': []}
 
   while T.value() <= args.T_max:
     if can_test:
@@ -79,7 +83,14 @@ def test(rank, args, T, shared_model):
             sum(avg_rewards) / args.evaluation_episodes,
             sum(avg_episode_lengths) / args.evaluation_episodes))
       fields = [t_start, sum(avg_rewards) / args.evaluation_episodes, sum(avg_episode_lengths) / args.evaluation_episodes, str(datetime.now())]
-      with open(os.path.join(save_dir, 'test_results.csv'), 'a') as f:
+
+      # storing data in the dictionary.
+      results_dict['t'].append(t_start)
+      results_dict['reward'].append(sum(avg_rewards) / args.evaluation_episodes)
+      results_dict['avg_steps'].append(sum(avg_episode_lengths) / args.evaluation_episodes)
+      results_dict['time'].append(str(datetime.now()))
+
+      with open(os.path.join(save_dir, 'results.csv'), 'a') as f:
         writer = csv.writer(f)
         writer.writerow(fields)
       if args.evaluate:
@@ -95,5 +106,9 @@ def test(rank, args, T, shared_model):
         can_test = True
 
     time.sleep(0.001)  # Check if available to test every millisecond
+
+  # Dumping the results in pickle format  
+  with open(os.join.path(save_dir, 'results.pck'), 'wb') as file:
+    pickle.dump(results_dict, file)
 
   env.close()
