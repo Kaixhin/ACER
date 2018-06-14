@@ -19,11 +19,7 @@ def test(rank, args, T, shared_model):
   model = ActorCritic(env.observation_space, env.action_space, args.hidden_size)
   model.eval()
 
-  if not os.path.exists('results'):
-    os.makedirs('results')
   save_dir = os.path.join('results', args.name)  
-  if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
 
   can_test = True  # Test flag
   t_start = 1  # Test step counter to check against global counter

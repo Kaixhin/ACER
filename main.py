@@ -54,8 +54,7 @@ if __name__ == '__main__':
 
   # Setup
   args = parser.parse_args()
-  if not os.path.exists('results'):
-    os.makedirs('results')
+  # Creating directories.
   save_dir = os.path.join('results', args.name)  
   if not os.path.exists(save_dir):
     os.makedirs(save_dir)  
@@ -90,7 +89,7 @@ if __name__ == '__main__':
   optimiser.share_memory()
   env.close()
 
-  fields = ['t', 'rewards', 'avg_Steps', 'time']
+  fields = ['t', 'rewards', 'avg_steps', 'time']
   with open(os.path.join(save_dir, 'test_results.csv'), 'w') as f:
     writer = csv.writer(f)
     writer.writerow(fields)
