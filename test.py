@@ -90,9 +90,15 @@ def test(rank, args, T, shared_model):
       results_dict['avg_steps'].append(sum(avg_episode_lengths) / args.evaluation_episodes)
       results_dict['time'].append(str(datetime.now()))
 
+      # Dumping the results in pickle format  
+      with open(os.join.path(save_dir, 'results.pck'), 'wb') as file:
+        pickle.dump(results_dict, file)
+
+      # Saving the data in csv format
       with open(os.path.join(save_dir, 'results.csv'), 'a') as f:
         writer = csv.writer(f)
         writer.writerow(fields)
+
       if args.evaluate:
         return
 
@@ -104,6 +110,7 @@ def test(rank, args, T, shared_model):
     else:
       if T.value() - t_start >= args.evaluation_interval:
         can_test = True
+
 
     time.sleep(0.001)  # Check if available to test every millisecond
 

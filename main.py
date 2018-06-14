@@ -90,7 +90,7 @@ if __name__ == '__main__':
   optimiser.share_memory()
   env.close()
 
-  fields = ['T_Value', 'Reward', 'Avg_Steps', 'time']
+  fields = ['t', 'rewards', 'avg_Steps', 'time']
   with open(os.path.join(save_dir, 'test_results.csv'), 'w') as f:
     writer = csv.writer(f)
     writer.writerow(fields)
