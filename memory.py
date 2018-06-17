@@ -22,17 +22,14 @@ class EpisodicReplayMemory():
 
   # Samples random trajectory
   def sample(self, maxlen=0):
-    while True:
-      e = random.randrange(len(self.memory))
-      mem = self.memory[e]
-      T = len(mem)
-      if T > 0:
-        # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
-        if maxlen > 0 and T > maxlen + 1:
-          t = random.randrange(T - maxlen - 1)  # Include next state after final "maxlen" state
-          return mem[t:t + maxlen + 1]
-        else:
-          return mem
+    mem = random.choice(self.memory)
+    T = len(mem)
+    # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
+    if maxlen > 0 and T > maxlen + 1:
+      t = random.randrange(T - maxlen - 1)  # Include next state after final "maxlen" state
+      return mem[t:t + maxlen + 1]
+    else:
+      return mem
 
   # Samples batch of trajectories, truncating them to the same length
   def sample_batch(self, batch_size, maxlen=0):
