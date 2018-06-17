@@ -111,7 +111,7 @@ def test(rank, args, T, shared_model):
     time.sleep(0.001)  # Check if available to test every millisecond
 
   # Dumping the results in pickle format  
-  with open(os.join.path(save_dir, 'results.pck'), 'wb') as f:
+  with open(os.path.join(save_dir, 'results.pck'), 'wb') as f:
     pickle.dump(results_dict, f)
 
   env.close()
