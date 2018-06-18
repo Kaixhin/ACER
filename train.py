@@ -58,20 +58,28 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
     shared_average_param = args.trust_region_decay * shared_average_param + (1 - args.trust_region_decay) * shared_param
 
 
-# Computes a trust region loss based on an existing loss and two distributions
+# Enables/disables gradients of model apart from policy head
+def _isolate_policy_grads(model, isolate):
+  for name, param in model.named_parameters():
+    if 'fc_actor' not in name:
+      param.requires_grad = not isolate
+
+
+# Computes an "efficient trust region" loss (policy head only) based on an existing loss and two distributions
 def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
+  _isolate_policy_grads(model, True)  # Disable gradients for other parameters
   # Compute gradients from original loss
   model.zero_grad()
   loss.backward(retain_graph=True)
   # Gradients should be treated as constants (not using detach as volatility can creep in when double backprop is not implemented)
-  g = [param.grad.data.clone() for param in model.parameters() if param.grad is not None]
+  g = [model.fc_actor.weight.grad.data.clone(), model.fc_actor.bias.grad.data]
   model.zero_grad()
 
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
   kl = (ref_distribution * (ref_distribution.log() - distribution.log())).sum(1)
   # Compute gradients from (negative) KL loss (increases KL divergence)
   (-kl).backward(retain_graph=True)
-  k = [param.grad.data.clone() for param in model.parameters() if param.grad is not None]
+  k = [model.fc_actor.weight.grad.data.clone(), model.fc_actor.bias.grad.data]
   model.zero_grad()
 
   # Compute dot products of gradients
@@ -85,8 +93,9 @@ def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
   # z* = g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k
   z_star = [g_p - trust_factor.expand_as(k_p) * k_p for g_p, k_p in zip(g, k)]
   trust_loss = 0
-  for param, z_star_p in zip(model.parameters(), z_star):
+  for param, z_star_p in zip([model.fc_actor.weight, model.fc_actor.bias], z_star):
     trust_loss += (param * z_star_p).sum()
+  _isolate_policy_grads(model, False)  # Re-enable gradients for other parameters
   return trust_loss
 
 
