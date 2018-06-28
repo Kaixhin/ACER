@@ -22,7 +22,7 @@ class EpisodicReplayMemory():
 
   # Samples random trajectory
   def sample(self, maxlen=0):
-    mem = random.choice(self.memory)
+    mem = self.memory[random.randrange(self.position)]
     T = len(mem)
     # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
     if maxlen > 0 and T > maxlen + 1:

@@ -76,7 +76,7 @@ def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
   model.zero_grad()
 
   # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-  kl = (ref_distribution * (ref_distribution.log() - distribution.log())).sum(1)
+  kl = (ref_distribution * (ref_distribution.log() - distribution.log())).sum(1).mean(0)
   # Compute gradients from (negative) KL loss (increases KL divergence)
   (-kl).backward(retain_graph=True)
   k = [model.fc_actor.weight.grad.data.clone(), model.fc_actor.bias.grad.data]
