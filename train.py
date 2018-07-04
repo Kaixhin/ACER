@@ -94,7 +94,7 @@ def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
   z_star = [g_p - trust_factor.expand_as(k_p) * k_p for g_p, k_p in zip(g, k)]
   trust_loss = 0
   for param, z_star_p in zip([model.fc_actor.weight, model.fc_actor.bias], z_star):
-    trust_loss += (param * z_star_p).sum()
+    trust_loss += (param * z_star_p.detach()).sum()
   _isolate_policy_grads(model, False)  # Re-enable gradients for other parameters
   return trust_loss
 
