@@ -22,7 +22,14 @@ class EpisodicReplayMemory():
 
   # Samples random trajectory
   def sample(self, maxlen=0):
-    mem = self.memory[random.randrange(len(self.memory))]
+    # mem = self.memory[random.randrange(len(self.memory))]
+    if self.length()==self.num_episodes:
+      numbers = list(range(0, self.position)) + list(range(self.position+1, self.num_episodes-1))
+      e = random.choice(numbers)
+    else:
+      e = random.randrange(len(self.memory))
+    # print (len(self.memory), self.position, e)
+    mem = self.memory[e]
     T = len(mem)
     # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
     if maxlen > 0 and T > maxlen + 1:
@@ -37,6 +44,10 @@ class EpisodicReplayMemory():
     minimum_size = min(len(trajectory) for trajectory in batch)
     batch = [trajectory[:minimum_size] for trajectory in batch]  # Truncate trajectories
     return list(map(list, zip(*batch)))  # Transpose so that timesteps are packed together
+
+  def length(self):
+    # Return number of epsiodes saved in memory
+    return len(self.memory)
 
   def __len__(self):
     return sum(len(episode) for episode in self.memory)
