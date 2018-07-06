@@ -11,25 +11,17 @@ class EpisodicReplayMemory():
     self.num_episodes = capacity // max_episode_length
     self.memory = deque(maxlen=self.num_episodes)
     self.memory.append([])  # List for first episode
-    self.position = 0
+    self.trajectory = []
 
   def append(self, state, action, reward, policy):
-    self.memory[self.position].append(Transition(state, action, reward, policy))  # Save s_i, a_i, r_i+1, µ(·|s_i)
+    self.trajectory.append(Transition(state, action, reward, policy))  # Save s_i, a_i, r_i+1, µ(·|s_i)
     # Terminal states are saved with actions as None, so switch to next episode
     if action is None:
-      self.memory.append([])
-      self.position = (self.position + 1)%self.num_episodes
-
+      self.memory.append(self.trajectory)
+      self.trajectory = []
   # Samples random trajectory
   def sample(self, maxlen=0):
-    # mem = self.memory[random.randrange(len(self.memory))]
-    if self.length()==self.num_episodes:
-      numbers = list(range(0, self.position)) + list(range(self.position+1, self.num_episodes))
-      e = random.choice(numbers)
-    else:
-      e = random.randrange(len(self.memory))
-    # print (len(self.memory), self.position, e)
-    mem = self.memory[e]
+    mem = self.memory[random.randrange(len(self.memory))]
     T = len(mem)
     # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
     if maxlen > 0 and T > maxlen + 1:
