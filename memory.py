@@ -18,11 +18,11 @@ class EpisodicReplayMemory():
     # Terminal states are saved with actions as None, so switch to next episode
     if action is None:
       self.memory.append([])
-      self.position = min(self.position + 1, self.num_episodes - 1)
+      self.position = (self.position + 1)%self.num_episodes
 
   # Samples random trajectory
   def sample(self, maxlen=0):
-    mem = self.memory[random.randrange(self.position)]
+    mem = self.memory[random.randrange(len(self.memory))]
     T = len(mem)
     # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
     if maxlen > 0 and T > maxlen + 1:
