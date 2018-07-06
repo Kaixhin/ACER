@@ -10,7 +10,6 @@ class EpisodicReplayMemory():
     # Max number of transitions possible will be the memory capacity, could be much less
     self.num_episodes = capacity // max_episode_length
     self.memory = deque(maxlen=self.num_episodes)
-    self.memory.append([])  # List for first episode
     self.trajectory = []
 
   def append(self, state, action, reward, policy):
