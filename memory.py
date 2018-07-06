@@ -24,7 +24,7 @@ class EpisodicReplayMemory():
   def sample(self, maxlen=0):
     # mem = self.memory[random.randrange(len(self.memory))]
     if self.length()==self.num_episodes:
-      numbers = list(range(0, self.position)) + list(range(self.position+1, self.num_episodes-1))
+      numbers = list(range(0, self.position)) + list(range(self.position+1, self.num_episodes))
       e = random.choice(numbers)
     else:
       e = random.randrange(len(self.memory))
