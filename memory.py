@@ -10,19 +10,17 @@ class EpisodicReplayMemory():
     # Max number of transitions possible will be the memory capacity, could be much less
     self.num_episodes = capacity // max_episode_length
     self.memory = deque(maxlen=self.num_episodes)
-    self.memory.append([])  # List for first episode
-    self.position = 0
+    self.trajectory = []
 
   def append(self, state, action, reward, policy):
-    self.memory[self.position].append(Transition(state, action, reward, policy))  # Save s_i, a_i, r_i+1, µ(·|s_i)
+    self.trajectory.append(Transition(state, action, reward, policy))  # Save s_i, a_i, r_i+1, µ(·|s_i)
     # Terminal states are saved with actions as None, so switch to next episode
     if action is None:
-      self.memory.append([])
-      self.position = min(self.position + 1, self.num_episodes - 1)
-
+      self.memory.append(self.trajectory)
+      self.trajectory = []
   # Samples random trajectory
   def sample(self, maxlen=0):
-    mem = self.memory[random.randrange(self.position)]
+    mem = self.memory[random.randrange(len(self.memory))]
     T = len(mem)
     # Take a random subset of trajectory if maxlen specified, otherwise return full trajectory
     if maxlen > 0 and T > maxlen + 1:
@@ -37,6 +35,10 @@ class EpisodicReplayMemory():
     minimum_size = min(len(trajectory) for trajectory in batch)
     batch = [trajectory[:minimum_size] for trajectory in batch]  # Truncate trajectories
     return list(map(list, zip(*batch)))  # Transpose so that timesteps are packed together
+
+  def length(self):
+    # Return number of epsiodes saved in memory
+    return len(self.memory)
 
   def __len__(self):
     return sum(len(episode) for episode in self.memory)
