@@ -57,45 +57,22 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
   for shared_param, shared_average_param in zip(shared_model.parameters(), shared_average_model.parameters()):
     shared_average_param = args.trust_region_decay * shared_average_param + (1 - args.trust_region_decay) * shared_param
 
-
-# Enables/disables gradients of model apart from policy head
-def _isolate_policy_grads(model, isolate):
-  for name, param in model.named_parameters():
-    if 'fc_actor' not in name:
-      param.requires_grad = not isolate
-
-
 # Computes an "efficient trust region" loss (policy head only) based on an existing loss and two distributions
-def _trust_region_loss(model, distribution, ref_distribution, loss, threshold):
-  _isolate_policy_grads(model, True)  # Disable gradients for other parameters
-  # Compute gradients from original loss
-  model.zero_grad()
-  loss.backward(retain_graph=True)
-  # Gradients should be treated as constants (not using detach as volatility can creep in when double backprop is not implemented)
-  g = [model.fc_actor.weight.grad.data.clone(), model.fc_actor.bias.grad.data]
-  model.zero_grad()
+def _trust_region_loss(model, distribution, ref_distribution, loss, threshold, g, k):
 
-  # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
-  kl = (ref_distribution * (ref_distribution.log() - distribution.log())).sum(1).mean(0)
-  # Compute gradients from (negative) KL loss (increases KL divergence)
-  (-kl).backward(retain_graph=True)
-  k = [model.fc_actor.weight.grad.data.clone(), model.fc_actor.bias.grad.data]
-  model.zero_grad()
+  kl = - (ref_distribution * (distribution.log()-ref_distribution.log())).sum(1).mean(0)
 
   # Compute dot products of gradients
-  k_dot_g = sum(torch.sum(k_p * g_p) for k_p, g_p in zip(k, g))
-  k_dot_k = sum(torch.sum(k_p ** 2) for k_p in k)
+  k_dot_g = (k*g).sum(1).mean(0)
+  k_dot_k = (k**2).sum(1).mean(0)
   # Compute trust region update
   if k_dot_k.item() > 0:
-    trust_factor = ((k_dot_g - threshold) / k_dot_k).clamp(min=0)
+    trust_factor = ((k_dot_g - threshold) / k_dot_k).clamp(min=0).detach()
   else:
     trust_factor = torch.zeros(1)
   # z* = g - max(0, (k^T∙g - δ) / ||k||^2_2)∙k
-  z_star = [g_p - trust_factor.expand_as(k_p) * k_p for g_p, k_p in zip(g, k)]
-  trust_loss = 0
-  for param, z_star_p in zip([model.fc_actor.weight, model.fc_actor.bias], z_star):
-    trust_loss += (param * z_star_p.detach()).sum()
-  _isolate_policy_grads(model, False)  # Re-enable gradients for other parameters
+  trust_loss = loss + trust_factor*kl
+ 
   return trust_loss
 
 
@@ -129,8 +106,15 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
       bias_weight = (1 - args.trace_max / rho).clamp(min=0) * policies[i]
       single_step_policy_loss -= (bias_weight * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1).mean(0)
     if args.trust_region:
+      # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
+      k = -average_policies[i].gather(1, actions[i]) / (policies[i].gather(1, actions[i]) + 1e-10)
+      if off_policy:
+        g = (rho.gather(1, actions[i]).clamp(max=args.trace_max) * A / (policies[i] + 1e-10).gather(1, actions[i]) \
+          + (bias_weight * (Qs[i] - Vs[i].expand_as(Qs[i]))/(policies[i] + 1e-10)).sum(1)).detach()
+      else:
+        g = (rho.gather(1, actions[i]).clamp(max=args.trace_max) * A / (policies[i] + 1e-10).gather(1, actions[i])).detach()
       # Policy update dθ ← dθ + ∂θ/∂θ∙z*
-      policy_loss += _trust_region_loss(model, policies[i], average_policies[i], single_step_policy_loss, args.trust_region_threshold)
+      policy_loss += _trust_region_loss(model, policies[i].gather(1, actions[i]) + 1e-10, average_policies[i].gather(1, actions[i]) + 1e-10, single_step_policy_loss, args.trust_region_threshold, g, k)
     else:
       # Policy update dθ ← dθ + ∂θ/∂θ∙g
       policy_loss += single_step_policy_loss
