@@ -60,7 +60,7 @@ def _update_networks(args, T, model, shared_model, shared_average_model, loss, o
 # Computes an "efficient trust region" loss (policy head only) based on an existing loss and two distributions
 def _trust_region_loss(model, distribution, ref_distribution, loss, threshold, g, k):
 
-  kl = -(ref_distribution*(distribution.log()-ref_distribution.log())).sum(1).mean(0)
+  kl = - (ref_distribution * (distribution.log()-ref_distribution.log())).sum(1).mean(0)
 
   # Compute dot products of gradients
   k_dot_g = (k*g).sum(1).mean(0)
@@ -106,6 +106,7 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
       bias_weight = (1 - args.trace_max / rho).clamp(min=0) * policies[i]
       single_step_policy_loss -= (bias_weight * policies[i].log() * (Qs[i].detach() - Vs[i].expand_as(Qs[i]).detach())).sum(1).mean(0)
     if args.trust_region:
+      # KL divergence k ← ∇θ0∙DKL[π(∙|s_i; θ_a) || π(∙|s_i; θ)]
       k = -average_policies[i].gather(1, actions[i]) / (policies[i].gather(1, actions[i]) + 1e-10)
       if off_policy:
         g = (rho.gather(1, actions[i]).clamp(max=args.trace_max) * A / (policies[i] + 1e-10).gather(1, actions[i]) \
