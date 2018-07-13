@@ -108,12 +108,12 @@ def _train(args, T, model, shared_model, shared_average_model, optimiser, polici
     if args.trust_region:
       k = -average_policies[i].gather(1, actions[i]) / (policies[i].gather(1, actions[i]) + 1e-10)
       if off_policy:
-        g = (rho.gather(1, actions[i]).clamp(max=args.trace_max) * A / policies[i].gather(1, actions[i]) \
-          + (bias_weight * (Qs[i] - Vs[i].expand_as(Qs[i]))/policies[i]).sum(1)).detach()
+        g = (rho.gather(1, actions[i]).clamp(max=args.trace_max) * A / (policies[i] + 1e-10).gather(1, actions[i]) \
+          + (bias_weight * (Qs[i] - Vs[i].expand_as(Qs[i]))/(policies[i] + 1e-10)).sum(1)).detach()
       else:
-        g = (rho.gather(1, actions[i]).clamp(max=args.trace_max) * A / policies[i].gather(1, actions[i])).detach()
+        g = (rho.gather(1, actions[i]).clamp(max=args.trace_max) * A / (policies[i] + 1e-10).gather(1, actions[i])).detach()
       # Policy update dθ ← dθ + ∂θ/∂θ∙z*
-      policy_loss += _trust_region_loss(model, policies[i].gather(1, actions[i]), average_policies[i].gather(1, actions[i]), single_step_policy_loss, args.trust_region_threshold, g, k)
+      policy_loss += _trust_region_loss(model, policies[i].gather(1, actions[i]) + 1e-10, average_policies[i].gather(1, actions[i]) + 1e-10, single_step_policy_loss, args.trust_region_threshold, g, k)
     else:
       # Policy update dθ ← dθ + ∂θ/∂θ∙g
       policy_loss += single_step_policy_loss
