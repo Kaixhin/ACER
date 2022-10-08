@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import plotly
-from plotly.graph_objs import Scatter, Line
+import plotly.graph_objs as go
 import torch
 from torch import multiprocessing as mp
 import os
@@ -38,14 +38,14 @@ def plot_line(xs, ys_population, save_dir):
   ys_std = ys.std(1).squeeze()
   ys_upper, ys_lower = ys_mean + ys_std, ys_mean - ys_std
 
-  trace_max = Scatter(x=xs, y=ys_max.numpy(), line=Line(color=max_colour, dash='dash'), name='Max')
-  trace_upper = Scatter(x=xs, y=ys_upper.numpy(), line=Line(color='transparent'), name='+1 Std. Dev.', showlegend=False)
-  trace_mean = Scatter(x=xs, y=ys_mean.numpy(), fill='tonexty', fillcolor=std_colour, line=Line(color=mean_colour), name='Mean')
-  trace_lower = Scatter(x=xs, y=ys_lower.numpy(), fill='tonexty', fillcolor=std_colour, line=Line(color='transparent'), name='-1 Std. Dev.', showlegend=False)
-  trace_min = Scatter(x=xs, y=ys_min.numpy(), line=Line(color=max_colour, dash='dash'), name='Min')
+  trace_max = go.Scatter(x=xs, y=ys_max.numpy(), mode='lines', line=dict(color=max_colour, dash='dash'), name='Max')
+  trace_upper = go.Scatter(x=xs, y=ys_upper.numpy(), mode='lines', marker=dict(color="#444"), line=dict(width=0), name='+1 Std. Dev.', showlegend=False)
+  trace_mean = go.Scatter(x=xs, y=ys_mean.numpy(), mode='lines', line=dict(color=mean_colour), name='Mean')
+  trace_lower = go.Scatter(x=xs, y=ys_lower.numpy(), mode='lines', marker=dict(color="#444"), line=dict(width=0), fill='tonexty', fillcolor=std_colour, name='-1 Std. Dev.', showlegend=False)
+  trace_min = go.Scatter(x=xs, y=ys_min.numpy(), mode='lines', line=dict(color=max_colour, dash='dash'), name='Min')
 
   plotly.offline.plot({
-    'data': [trace_upper, trace_mean, trace_lower, trace_min, trace_max],
+    'data': [trace_mean, trace_upper, trace_lower, trace_min, trace_max],
     'layout': dict(title='Rewards',
                    xaxis={'title': 'Step'},
                    yaxis={'title': 'Average Reward'})
