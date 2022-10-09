@@ -42,9 +42,11 @@ class SharedRMSprop(optim.RMSprop):
           grad = grad.add(group['weight_decay'], p.data)
 
         # g = αg + (1 - α)Δθ^2
-        square_avg.mul_(alpha).addcmul_(1 - alpha, grad, grad)
+        # square_avg.mul_(alpha).addcmul_(1 - alpha, grad, grad)
+        square_avg.mul_(alpha).addcmul_(grad, grad, value=1 - alpha)
         # θ ← θ - ηΔθ/√(g + ε)
         avg = square_avg.sqrt().add_(group['eps'])
-        p.data.addcdiv_(-group['lr'], grad, avg)
+        # p.data.addcdiv_(-group['lr'], grad, avg)
+        p.data.addcdiv_(grad, avg, value=-group['lr'])
 
     return loss
